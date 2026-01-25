@@ -1,0 +1,21 @@
+[Unit]
+Description=Asistente Virtual - WiFi AP Manager
+Documentation=https://github.com/tu-usuario/asistente
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/orangepi/asistente
+Environment="PATH=/home/orangepi/asistente/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/home/orangepi/asistente/venv/bin/python /home/orangepi/asistente/src/utils/ap_manager.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=asistente-ap
+
+[Install]
+WantedBy=multi-user.target

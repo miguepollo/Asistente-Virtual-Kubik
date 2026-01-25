@@ -1,0 +1,30 @@
+[Unit]
+Description=Asistente Virtual - Web Server
+Documentation=https://github.com/tu-usuario/asistente
+After=network.target
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi/asistente
+Environment="PATH=/home/orangepi/asistente/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="FLASK_APP=src/webserver/app.py"
+Environment="FLASK_ENV=production"
+ExecStart=/home/orangepi/asistente/venv/bin/python src/webserver/app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=asistente-web
+
+# Seguridad
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/orangepi/asistente/logs /home/orangepi/asistente/config /home/orangepi/asistente/models
+
+[Install]
+WantedBy=multi-user.target

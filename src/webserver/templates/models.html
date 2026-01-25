@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Modelos - Asistente Virtual{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>📥 Modelos de Lenguaje (LLM)</h2>
+    <p style="color: #888; margin-bottom: 20px;">
+        Selecciona un modelo para descargar. Los modelos se descargan desde HuggingFace.
+    </p>
+
+    <!-- Selector de modelo -->
+    <div style="margin-bottom: 20px;">
+        <label>Selecciona un modelo:</label>
+        <select id="modelSelect" onchange="updateModelInfo()">
+            <option value="">-- Seleccionar --</option>
+        </select>
+    </div>
+
+    <!-- Info del modelo seleccionado -->
+    <div id="modelInfo" style="display: none; margin-bottom: 20px; padding: 15px; background: rgba(0,217,255,0.1); border-radius: 10px;">
+        <h3 id="modelInfoName" style="color: #00d9ff; margin-bottom: 10px;"></h3>
+        <p id="modelInfoDesc"></p>
+        <p style="margin-top: 10px;">
+            <strong>Tamaño:</strong> <span id="modelInfoSize"></span>
+        </p>
+    </div>
+
+    <!-- Botón de descarga -->
+    <button id="downloadBtn" class="btn" onclick="downloadModel()" disabled>
+        📥 Descargar Modelo
+    </button>
+
+    <!-- Spinner -->
+    <div class="spinner" id="spinner">
+        <svg width="50" height="50" viewBox="0 0 50 50">
+            <circle cx="25" cy="25" r="20"></circle>
+        </svg>
+    </div>
+
+    <!-- Barra de progreso -->
+    <div class="progress-bar" id="progressBar">
+        <div class="fill" id="progressFill"></div>
+    </div>
+    <p id="progressText" style="text-align: center; margin-top: 10px; display: none;">Descargando... <span id="progressPercent">0</span>%</p>
+</div>
+
+<div class="card">
+    <h2>📦 Modelos Instalados</h2>
+    <div id="installedModels">
+        <p style="color: #888;">Cargando...</p>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📋 Modelos Disponibles</h2>
+    <div class="model-grid" id="availableModels">
+        <p style="color: #888;">Cargando...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedModel = null;
+let downloadCheckInterval = null;
+
+async function loadModels() {
+    const data = await apiGet('/api/models/llm');
+
+    // Cargar modelos disponibles en el select
+    const select = document.getElementById('modelSelect');
+    select.innerHTML = '<option value="">-- Seleccionar --</option>';
+
+    data.available.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model.name;
+        option.textContent = model.name + (model.recommended ? ' (Recomendado)' : '');
+        select.appendChild(option);
+    });
+
+    // Mostrar modelos disponibles
+    const grid = document.getElementById('availableModels');
+    grid.innerHTML = data.available.map(model => `
+        <div class="model-card" onclick="selectModelFromCard('${model.name}')" style="cursor: pointer;">
+            <h3>${model.name}${model.recommended ? '<span class="badge">Recomendado</span>' : ''}</h3>
+            <p class="size">📦 ${formatSize(model.size_mb)}</p>
+            <p style="color: #888; margin-top: 10px;">${model.description}</p>
+        </div>
+    `).join('');
+
+    // Mostrar modelos instalados
+    updateInstalledModels(data.installed);
+}
+
+function updateInstalledModels(installed) {
+    const container = document.getElementById('installedModels');
+
+    if (installed.length === 0) {
+        container.innerHTML = '<p style="color: #888;">No hay modelos instalados</p>';
+        return;
+    }
+
+    container.innerHTML = installed.map(model => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+            <span>📦 ${model}</span>
+            <button class="btn btn-danger" onclick="deleteModel('${model}')" style="padding: 8px 15px; font-size: 0.85rem;">Eliminar</button>
+        </div>
+    `).join('');
+}
+
+function selectModelFromCard(name) {
+    document.getElementById('modelSelect').value = name;
+    updateModelInfo();
+}
+
+function updateModelInfo() {
+    const select = document.getElementById('modelSelect');
+    const name = select.value;
+
+    if (!name) {
+        document.getElementById('modelInfo').style.display = 'none';
+        document.getElementById('downloadBtn').disabled = true;
+        selectedModel = null;
+        return;
+    }
+
+    apiGet('/api/models/llm').then(data => {
+        const model = data.available.find(m => m.name === name);
+        if (model) {
+            selectedModel = model;
+            document.getElementById('modelInfoName').textContent = model.name;
+            document.getElementById('modelInfoDesc').textContent = model.description;
+            document.getElementById('modelInfoSize').textContent = formatSize(model.size_mb);
+            document.getElementById('modelInfo').style.display = 'block';
+            document.getElementById('downloadBtn').disabled = false;
+        }
+    });
+}
+
+async function downloadModel() {
+    if (!selectedModel) return;
+
+    // Verificar si ya está instalado
+    const data = await apiGet('/api/models/llm');
+    if (data.installed.includes(selectedModel.name)) {
+        alert('Este modelo ya está instalado');
+        return;
+    }
+
+    // Mostrar spinner
+    document.getElementById('spinner').classList.add('active');
+    document.getElementById('progressBar').classList.add('active');
+    document.getElementById('progressText').style.display = 'block';
+    document.getElementById('downloadBtn').disabled = true;
+
+    // Iniciar descarga
+    await apiPost('/api/models/download', { model: selectedModel.name });
+
+    // Iniciar polling de progreso
+    downloadCheckInterval = setInterval(checkDownloadProgress, 500);
+}
+
+async function checkDownloadProgress() {
+    const status = await apiGet('/api/models/download/status');
+
+    document.getElementById('progressFill').style.width = status.progress + '%';
+    document.getElementById('progressPercent').textContent = status.progress;
+
+    if (status.error) {
+        clearInterval(downloadCheckInterval);
+        document.getElementById('spinner').classList.remove('active');
+        document.getElementById('progressBar').classList.remove('active');
+        document.getElementById('progressText').style.display = 'none';
+        alert('Error descargando: ' + status.error);
+        document.getElementById('downloadBtn').disabled = false;
+        return;
+    }
+
+    if (!status.downloading && status.progress >= 100) {
+        clearInterval(downloadCheckInterval);
+        document.getElementById('spinner').classList.remove('active');
+        document.getElementById('progressBar').classList.remove('active');
+        document.getElementById('progressText').style.display = 'none';
+        document.getElementById('downloadBtn').disabled = false;
+        document.getElementById('progressFill').style.width = '0%';
+
+        // Recargar modelos
+        loadModels();
+
+        // Resetear selección
+        document.getElementById('modelSelect').value = '';
+        document.getElementById('modelInfo').style.display = 'none';
+        selectedModel = null;
+
+        alert('¡Modelo descargado correctamente!');
+    }
+}
+
+async function deleteModel(name) {
+    if (!confirm(`¿Eliminar el modelo ${name}?`)) return;
+
+    await apiPost('/api/models/delete', { model: name });
+    loadModels();
+}
+
+// Cargar modelos al iniciar
+loadModels();
+</script>
+{% endblock %}

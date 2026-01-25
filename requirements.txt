@@ -1,0 +1,40 @@
+# Asistente Virtual - Orange Pi 5 Ultra
+# Dependencias Python
+
+# Core Audio
+pyaudio==0.2.13
+numpy==1.24.3
+scipy==1.10.1
+
+# AI Engines
+pvporcupine==2.2.0
+vosk==0.3.45
+# piper-tts se instala como binario (ver install.sh)
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+requests==2.31.0
+
+# HuggingFace (para modelos RKLLM)
+huggingface-hub>=0.20.0
+
+# Utils
+python-dotenv==1.0.0
+pyyaml==6.0.1
+cryptography==41.0.7
+webrtcvad==2.0.10
+pydub==0.25.1
+
+# Networking
+netifaces==0.11.0
+
+# Logging
+colorlog==6.7.0
+
+# Testing
+pytest==7.4.0
+pytest-cov==4.1.0
+
+# rkllm - instalar manualmente desde GitHub
+# git clone https://github.com/airockchip/rknn-llm

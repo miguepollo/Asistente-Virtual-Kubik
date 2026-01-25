@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración - Asistente Virtual{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>🔧 Configuración del Asistente</h2>
+
+    <form id="configForm" onsubmit="saveConfig(event)">
+        <!-- Audio -->
+        <h3 style="color: #00d9ff; margin: 20px 0 15px;">🎙️ Audio</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <label>Frecuencia (Hz)</label>
+                <input type="number" id="audio_sample_rate" value="16000">
+            </div>
+            <div>
+                <label>Canales</label>
+                <select id="audio_channels">
+                    <option value="1">1 (Mono)</option>
+                    <option value="2">2 (Estéreo)</option>
+                </select>
+            </div>
+            <div>
+                <label>Volumen Salida (%)</label>
+                <input type="number" id="audio_output_volume" value="70" min="0" max="100">
+            </div>
+        </div>
+
+        <!-- VAD -->
+        <h3 style="color: #00d9ff; margin: 20px 0 15px;">🎤 Detección de Voz</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <label>Sensibilidad (0-3)</label>
+                <select id="vad_aggressiveness">
+                    <option value="0">0 (Muy permisiva)</option>
+                    <option value="1">1 (Permisiva)</option>
+                    <option value="2">2 (Estándar)</option>
+                    <option value="3" selected>3 (Estricta)</option>
+                </select>
+            </div>
+            <div>
+                <label>Silencio para fin (seg)</label>
+                <input type="number" id="vad_silence_duration" value="2.0" step="0.5" min="0.5" max="5">
+            </div>
+        </div>
+
+        <!-- Wake Word -->
+        <h3 style="color: #00d9ff; margin: 20px 0 15px;">⏰ Wake Word</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <label>Sensibilidad (0.0-1.0)</label>
+                <input type="number" id="wake_word_sensitivity" value="0.5" step="0.1" min="0" max="1">
+            </div>
+            <div>
+                <label>Palabra clave</label>
+                <input type="text" id="wake_word_keyword" value="asistente" readonly style="opacity: 0.6;">
+            </div>
+        </div>
+
+        <!-- TTS -->
+        <h3 style="color: #00d9ff; margin: 20px 0 15px;">🔊 Síntesis de Voz</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <label>Velocidad</label>
+                <input type="number" id="tts_speed" value="1.0" step="0.1" min="0.5" max="2.0">
+            </div>
+            <div>
+                <label>Volumen</label>
+                <input type="number" id="tts_volume" value="0.8" step="0.1" min="0.1" max="1.0">
+            </div>
+        </div>
+
+        <!-- LLM -->
+        <h3 style="color: #00d9ff; margin: 20px 0 15px;">🧠 Lenguaje (LLM)</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <label>Temperatura (creatividad)</label>
+                <input type="number" id="llm_temperature" value="0.7" step="0.1" min="0" max="1">
+            </div>
+            <div>
+                <label>Tokens máximos</label>
+                <input type="number" id="llm_max_tokens" value="256" step="32" min="64" max="1024">
+            </div>
+        </div>
+
+        <div style="margin-top: 30px; display: flex; gap: 10px;">
+            <button type="submit" class="btn">💾 Guardar Cambios</button>
+            <button type="button" class="btn" onclick="loadConfig()">🔄 Recargar</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>🔑 API Keys</h2>
+    <p style="color: #888; margin-bottom: 15px;">
+        Para configurar las API keys, edita el archivo <code>config/api_keys.json</code> en el servidor.
+    </p>
+    <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-family: monospace;">
+        <p style="color: #00d9ff;">Picovoice (Wake Word)</p>
+        <p style="color: #888; font-size: 0.9rem;">Obtén tu key en: https://console.picovoice.ai</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadConfig() {
+    const config = await apiGet('/api/config');
+
+    if (config.audio) {
+        document.getElementById('audio_sample_rate').value = config.audio.sample_rate || 16000;
+        document.getElementById('audio_channels').value = config.audio.channels || 1;
+        document.getElementById('audio_output_volume').value = config.audio.output_volume || 70;
+    }
+
+    if (config.vad) {
+        document.getElementById('vad_aggressiveness').value = config.vad.aggressiveness || 3;
+        document.getElementById('vad_silence_duration').value = config.vad.silence_duration || 2.0;
+    }
+
+    if (config.wake_word) {
+        document.getElementById('wake_word_sensitivity').value = config.wake_word.sensitivity || 0.5;
+        document.getElementById('wake_word_keyword').value = config.wake_word.keyword || 'asistente';
+    }
+
+    if (config.tts) {
+        document.getElementById('tts_speed').value = config.tts.speed || 1.0;
+        document.getElementById('tts_volume').value = config.tts.volume || 0.8;
+    }
+
+    if (config.llm) {
+        document.getElementById('llm_temperature').value = config.llm.temperature || 0.7;
+        document.getElementById('llm_max_tokens').value = config.llm.max_tokens || 256;
+    }
+}
+
+async function saveConfig(e) {
+    e.preventDefault();
+
+    const config = {
+        audio: {
+            sample_rate: parseInt(document.getElementById('audio_sample_rate').value),
+            channels: parseInt(document.getElementById('audio_channels').value),
+            output_volume: parseInt(document.getElementById('audio_output_volume').value)
+        },
+        vad: {
+            aggressiveness: parseInt(document.getElementById('vad_aggressiveness').value),
+            silence_duration: parseFloat(document.getElementById('vad_silence_duration').value)
+        },
+        wake_word: {
+            sensitivity: parseFloat(document.getElementById('wake_word_sensitivity').value),
+            keyword: document.getElementById('wake_word_keyword').value
+        },
+        tts: {
+            speed: parseFloat(document.getElementById('tts_speed').value),
+            volume: parseFloat(document.getElementById('tts_volume').value)
+        },
+        llm: {
+            temperature: parseFloat(document.getElementById('llm_temperature').value),
+            max_tokens: parseInt(document.getElementById('llm_max_tokens').value)
+        }
+    };
+
+    await apiPost('/api/config', config);
+    alert('✅ Configuración guardada');
+}
+
+// Cargar config al inicio
+loadConfig();
+</script>
+{% endblock %}

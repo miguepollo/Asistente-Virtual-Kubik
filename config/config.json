@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "audio": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "chunk_size": 512,
+    "input_device": null,
+    "output_device": null,
+    "input_volume": 60,
+    "output_volume": 70
+  },
+  "vad": {
+    "sample_rate": 16000,
+    "aggressiveness": 3,
+    "frame_duration_ms": 30,
+    "silence_duration": 2.0
+  },
+  "wake_word": {
+    "enabled": true,
+    "keyword": "asistente",
+    "sensitivity": 0.5,
+    "model_path": "/home/orangepi/asistente/models/wakeword/asistente_es.ppn"
+  },
+  "stt": {
+    "engine": "vosk",
+    "model_path": "/home/orangepi/asistente/models/stt/vosk-model-small-es-0.42",
+    "language": "es"
+  },
+  "tts": {
+    "engine": "piper",
+    "voice": "es_ES-davefx-medium",
+    "model_path": "/home/orangepi/asistente/models/tts/es_ES-davefx-medium.onnx",
+    "speed": 1.0,
+    "volume": 0.8
+  },
+  "llm": {
+    "engine": "rkllm",
+    "model_path": "/home/orangepi/asistente/models/llm/phi-2-1.3b-q4.gguf",
+    "context_length": 2048,
+    "temperature": 0.7,
+    "max_tokens": 256
+  },
+  "context": {
+    "timeout_seconds": 60,
+    "max_history": 5,
+    "persist_conversations": true
+  },
+  "webserver": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": false
+  },
+  "wifi_ap": {
+    "enabled": true,
+    "ssid": "Asistente-Config",
+    "ip": "192.168.12.1",
+    "dhcp_start": "192.168.12.100",
+    "dhcp_end": "192.168.12.200"
+  },
+  "logging": {
+    "level": "INFO",
+    "log_file": "/home/orangepi/asistente/logs/assistant.log",
+    "max_size_mb": 10,
+    "backup_count": 5
+  }
+}

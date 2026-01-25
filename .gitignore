@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+env/
+ENV/
+
+# Config files con credenciales
+config/api_keys.json
+config/network.json
+.env
+
+# Logs
+logs/
+*.log
+
+# Modelos (muy grandes para git)
+models/llm/*.gguf
+models/stt/vosk-model-*/
+models/tts/*.onnx
+models/wakeword/*.ppn
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Misc
+*.bak
+backup/
+*.old

@@ -1,0 +1,30 @@
+{
+  "picovoice": {
+    "access_key": "TU_ACCESS_KEY_AQUI",
+    "description": "Para wake word detection con Porcupine"
+  },
+  "openweathermap": {
+    "api_key": "TU_API_KEY_AQUI",
+    "description": "Para información del clima",
+    "url": "https://openweathermap.org/api"
+  },
+  "spotify": {
+    "client_id": "TU_CLIENT_ID_AQUI",
+    "client_secret": "TU_CLIENT_SECRET_AQUI",
+    "redirect_uri": "http://localhost:5000/callback/spotify",
+    "description": "Para control de Spotify"
+  },
+  "google": {
+    "calendar_credentials_path": "/path/to/credentials.json",
+    "description": "Para Google Calendar"
+  },
+  "ifttt": {
+    "webhook_key": "TU_WEBHOOK_KEY_AQUI",
+    "description": "Para automatizaciones IFTTT"
+  },
+  "home_assistant": {
+    "url": "http://homeassistant.local:8123",
+    "token": "TU_LONG_LIVED_ACCESS_TOKEN_AQUI",
+    "description": "Para control de domótica"
+  }
+}

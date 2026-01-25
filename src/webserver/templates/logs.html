@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - Asistente Virtual{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 style="margin: 0;">📋 Logs del Sistema</h2>
+        <div>
+            <button class="btn" onclick="loadLogs()">🔄 Recargar</button>
+            <button class="btn" onclick="loadLogs(500)">📥 Más líneas</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <pre id="logsContent" style="max-height: 500px; overflow-y: auto;">Cargando logs...</pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadLogs(lines = 100) {
+    const data = await apiGet('/api/logs?lines=' + lines);
+    const content = document.getElementById('logsContent');
+
+    if (data.logs) {
+        // Colorear líneas según nivel
+        const lines = data.logs.split('\n');
+        const colored = lines.map(line => {
+            if (line.includes('ERROR')) return '<span style="color: #ff4757;">' + line + '</span>';
+            if (line.includes('WARN')) return '<span style="color: #ffa502;">' + line + '</span>';
+            if (line.includes('INFO')) return '<span style="color: #2ecc71;">' + line + '</span>';
+            if (line.includes('DEBUG')) return '<span style="color: #888;">' + line + '</span>';
+            return line;
+        }).join('\n');
+        content.innerHTML = colored;
+        // Scroll al final
+        content.scrollTop = content.scrollHeight;
+    } else {
+        content.textContent = 'No hay logs disponibles';
+    }
+}
+
+// Auto-recargar cada 5 segundos
+loadLogs();
+setInterval(() => loadLogs(100), 5000);
+</script>
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Asistente Virtual{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="value" id="cpuValue">--%</div>
+        <div class="label">CPU</div>
+    </div>
+    <div class="stat-box">
+        <div class="value" id="memValue">--%</div>
+        <div class="label">Memoria</div>
+    </div>
+    <div class="stat-box">
+        <div class="value" id="diskValue">--%</div>
+        <div class="label">Disco</div>
+    </div>
+    <div class="stat-box">
+        <div class="value" id="uptimeValue">--</div>
+        <div class="label">Uptime</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🎤 Estado del Asistente</h2>
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <span class="status-dot" id="assistantStatus"></span>
+        <span id="assistantStatusText">Cargando...</span>
+        <div style="margin-left: auto; display: flex; gap: 10px;">
+            <button class="btn" onclick="startAssistant()">▶ Iniciar</button>
+            <button class="btn btn-danger" onclick="stopAssistant()">⏹ Detener</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📊 Modelos Instalados</h2>
+    <div id="modelsStatus">
+        <p><span class="status-dot" id="sttStatus"></span> STT (Vosk Español)</p>
+        <p><span class="status-dot" id="ttsStatus"></span> TTS (Piper Español)</p>
+        <p><span class="status-dot" id="llmStatus"></span> LLM: <span id="llmName">--</span></p>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🔊 Audio</h2>
+    <div id="audioDevices">
+        <p>Dispositivos de entrada: <span id="inputDevices">--</span></p>
+        <p>Dispositivos de salida: <span id="outputDevices">--</span></p>
+    </div>
+</div>
+
+<div class="card">
+    <h2>⚙️ Acciones Rápidas</h2>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn" onclick="window.location.href='/models'">📥 Descargar Modelos</button>
+        <button class="btn" onclick="window.location.href='/config'">🔧 Configurar</button>
+        <button class="btn" onclick="window.location.href='/logs'">📋 Ver Logs</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function updateStats() {
+    const stats = await apiGet('/api/stats');
+    document.getElementById('cpuValue').textContent = stats.cpu + '%';
+    document.getElementById('memValue').textContent = stats.memory.percent + '%';
+    document.getElementById('diskValue').textContent = stats.disk.percent + '%';
+    document.getElementById('uptimeValue').textContent = stats.uptime;
+}
+
+async function updateStatus() {
+    const status = await apiGet('/api/status');
+
+    // Assistant status
+    const active = status.services.asistente.active;
+    const dot = document.getElementById('assistantStatus');
+    const text = document.getElementById('assistantStatusText');
+
+    if (active) {
+        dot.classList.add('active');
+        dot.classList.remove('inactive');
+        text.textContent = 'Corriendo';
+    } else {
+        dot.classList.remove('active');
+        dot.classList.add('inactive');
+        text.textContent = 'Detenido';
+    }
+
+    // Models
+    document.getElementById('sttStatus').className = 'status-dot ' + (status.models.stt ? 'active' : 'inactive');
+    document.getElementById('ttsStatus').className = 'status-dot ' + (status.models.tts ? 'active' : 'inactive');
+
+    const llm = status.models.llm;
+    if (llm.length > 0) {
+        document.getElementById('llmStatus').className = 'status-dot active';
+        document.getElementById('llmName').textContent = llm.join(', ');
+    } else {
+        document.getElementById('llmStatus').className = 'status-dot inactive';
+        document.getElementById('llmName').textContent = 'No instalado';
+    }
+
+    // Audio
+    document.getElementById('inputDevices').textContent = status.audio.input_devices.length;
+    document.getElementById('outputDevices').textContent = status.audio.output_devices.length;
+}
+
+async function startAssistant() {
+    await apiPost('/api/assistant/start', {});
+    await updateStatus();
+}
+
+async function stopAssistant() {
+    await apiPost('/api/assistant/stop', {});
+    await updateStatus();
+}
+
+// Actualizar cada 5 segundos
+updateStats();
+updateStatus();
+setInterval(updateStats, 5000);
+setInterval(updateStatus, 5000);
+</script>
+{% endblock %}
