@@ -3,59 +3,148 @@
 {% block title %}Modelos - Asistente Virtual{% endblock %}
 
 {% block content %}
-<div class="card">
-    <h2>📥 Modelos de Lenguaje (LLM)</h2>
-    <p style="color: #888; margin-bottom: 20px;">
-        Selecciona un modelo para descargar. Los modelos se descargan desde HuggingFace.
-    </p>
+<!-- Tabs de navegación -->
+<div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;">
+    <button class="btn" onclick="showTab('llm')" id="tab-llm">🧠 Modelos LLM</button>
+    <button class="btn" onclick="showTab('tts')" id="tab-tts">🔊 Voces TTS</button>
+    <button class="btn" onclick="showTab('network')" id="tab-network">📶 Red / WiFi</button>
+</div>
 
-    <!-- Selector de modelo -->
-    <div style="margin-bottom: 20px;">
-        <label>Selecciona un modelo:</label>
-        <select id="modelSelect" onchange="updateModelInfo()">
-            <option value="">-- Seleccionar --</option>
-        </select>
-    </div>
-
-    <!-- Info del modelo seleccionado -->
-    <div id="modelInfo" style="display: none; margin-bottom: 20px; padding: 15px; background: rgba(0,217,255,0.1); border-radius: 10px;">
-        <h3 id="modelInfoName" style="color: #00d9ff; margin-bottom: 10px;"></h3>
-        <p id="modelInfoDesc"></p>
-        <p style="margin-top: 10px;">
-            <strong>Tamaño:</strong> <span id="modelInfoSize"></span>
+<!-- TAB: Modelos LLM -->
+<div id="panel-llm" class="tab-panel">
+    <div class="card">
+        <h2>📥 Modelos de Lenguaje (LLM)</h2>
+        <p style="color: #888; margin-bottom: 20px;">
+            Selecciona un modelo para descargar. Los modelos se descargan desde HuggingFace.
+            <br><small style="color: #666;">Los modelos recomendados están optimizados para la NPU RK3588.</small>
         </p>
+
+        <!-- Selector de modelo -->
+        <div style="margin-bottom: 20px;">
+            <label>Selecciona un modelo:</label>
+            <select id="modelSelect" onchange="updateModelInfo()">
+                <option value="">-- Seleccionar --</option>
+            </select>
+        </div>
+
+        <!-- Info del modelo seleccionado -->
+        <div id="modelInfo" style="display: none; margin-bottom: 20px; padding: 15px; background: rgba(0,217,255,0.1); border-radius: 10px;">
+            <h3 id="modelInfoName" style="color: #00d9ff; margin-bottom: 10px;"></h3>
+            <p id="modelInfoDesc"></p>
+            <p style="margin-top: 10px;">
+                <strong>Tamaño:</strong> <span id="modelInfoSize"></span>
+            </p>
+        </div>
+
+        <!-- Botón de descarga -->
+        <button id="downloadBtn" class="btn" onclick="downloadModel()" disabled>
+            📥 Descargar Modelo
+        </button>
+
+        <!-- Spinner -->
+        <div class="spinner" id="spinner">
+            <svg width="50" height="50" viewBox="0 0 50 50">
+                <circle cx="25" cy="25" r="20"></circle>
+            </svg>
+        </div>
+
+        <!-- Barra de progreso -->
+        <div class="progress-bar" id="progressBar">
+            <div class="fill" id="progressFill"></div>
+        </div>
+        <p id="progressText" style="text-align: center; margin-top: 10px; display: none;">Descargando... <span id="progressPercent">0</span>%</p>
     </div>
 
-    <!-- Botón de descarga -->
-    <button id="downloadBtn" class="btn" onclick="downloadModel()" disabled>
-        📥 Descargar Modelo
-    </button>
-
-    <!-- Spinner -->
-    <div class="spinner" id="spinner">
-        <svg width="50" height="50" viewBox="0 0 50 50">
-            <circle cx="25" cy="25" r="20"></circle>
-        </svg>
+    <div class="card">
+        <h2>📦 Modelos Instalados</h2>
+        <div id="installedModels">
+            <p style="color: #888;">Cargando...</p>
+        </div>
     </div>
 
-    <!-- Barra de progreso -->
-    <div class="progress-bar" id="progressBar">
-        <div class="fill" id="progressFill"></div>
+    <div class="card">
+        <h2>📋 Modelos Disponibles</h2>
+        <div class="model-grid" id="availableModels">
+            <p style="color: #888;">Cargando...</p>
+        </div>
     </div>
-    <p id="progressText" style="text-align: center; margin-top: 10px; display: none;">Descargando... <span id="progressPercent">0</span>%</p>
 </div>
 
-<div class="card">
-    <h2>📦 Modelos Instalados</h2>
-    <div id="installedModels">
-        <p style="color: #888;">Cargando...</p>
+<!-- TAB: Voces TTS -->
+<div id="panel-tts" class="tab-panel" style="display: none;">
+    <div class="card">
+        <h2>🔊 Voces de Piper TTS</h2>
+        <p style="color: #888; margin-bottom: 20px;">
+            Selecciona y descarga voces para el sintetizador de voz.
+            <br><small style="color: #666;">Las voces están organizadas por idioma.</small>
+        </p>
+
+        <!-- Voz actual -->
+        <div style="margin-bottom: 20px; padding: 15px; background: rgba(0,255,136,0.1); border-radius: 10px;">
+            <h3 style="color: #00ff88; margin-bottom: 5px;">🎙️ Voz Actual</h3>
+            <p id="currentVoiceDisplay" style="font-size: 1.1rem;">Cargando...</p>
+        </div>
+
+        <!-- Tabs de idioma -->
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <button class="btn" onclick="showVoiceLang('es_ES')" id="voice-lang-es_ES">🇪🇸 Español (ES)</button>
+            <button class="btn" onclick="showVoiceLang('es_MX')" id="voice-lang-es_MX">🇲🇽 Español (MX)</button>
+            <button class="btn" onclick="showVoiceLang('en_US')" id="voice-lang-en_US">🇺🇸 English (US)</button>
+        </div>
+
+        <!-- Lista de voces -->
+        <div id="voicesList">
+            <p style="color: #888;">Selecciona un idioma arriba...</p>
+        </div>
+
+        <!-- Barra de progreso para TTS -->
+        <div class="progress-bar" id="progressBarTTS" style="margin-top: 20px; display: none;">
+            <div class="fill" id="progressFillTTS"></div>
+        </div>
+        <p id="progressTextTTS" style="text-align: center; margin-top: 10px; display: none;">Descargando voz... <span id="progressPercentTTS">0</span>%</p>
     </div>
 </div>
 
-<div class="card">
-    <h2>📋 Modelos Disponibles</h2>
-    <div class="model-grid" id="availableModels">
-        <p style="color: #888;">Cargando...</p>
+<!-- TAB: Red / WiFi -->
+<div id="panel-network" class="tab-panel" style="display: none;">
+    <!-- Estado de conexión actual -->
+    <div class="card">
+        <h2>📶 Estado de Red</h2>
+        <div id="networkStatus">
+            <p style="color: #888;">Cargando...</p>
+        </div>
+    </div>
+
+    <!-- Escanear redes WiFi -->
+    <div class="card">
+        <h2>🔍 Redes WiFi Disponibles</h2>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <button class="btn" onclick="scanWiFi()">🔄 Escanear Redes</button>
+            <span id="scanStatus" style="color: #888; align-self: center;"></span>
+        </div>
+
+        <div id="wifiNetworks">
+            <p style="color: #888;">Haz clic en "Escanear Redes" para buscar WiFi...</p>
+        </div>
+    </div>
+
+    <!-- Conexión manual -->
+    <div class="card" style="display: none;" id="manualConnectCard">
+        <h2>🔑 Conectar a Red WiFi</h2>
+        <form onsubmit="connectWiFi(event)">
+            <div style="margin-bottom: 15px;">
+                <label>SSID (nombre de red):</label>
+                <input type="text" id="wifiSSID" required readonly style="background: rgba(255,255,255,0.05);">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label>Contraseña:</label>
+                <input type="password" id="wifiPassword" placeholder="Dejar vacío si es red abierta">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn">🔌 Conectar</button>
+                <button type="button" class="btn" onclick="cancelConnect()">Cancelar</button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}
@@ -63,8 +152,24 @@
 {% block scripts %}
 <script>
 let selectedModel = null;
+let selectedVoiceLang = 'es_ES';
 let downloadCheckInterval = null;
 
+// Inicialización
+showTab('llm');
+
+// Funciones de tabs
+function showTab(tabName) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('[id^="tab-"]').forEach(b => b.classList.remove('btn-primary'));
+    document.getElementById('panel-' + tabName).style.display = 'block';
+    document.getElementById('tab-' + tabName).classList.add('btn-primary');
+
+    if (tabName === 'tts') loadTTSVoices();
+    if (tabName === 'network') loadNetworkStatus();
+}
+
+// =================== LLM ===================
 async function loadModels() {
     const data = await apiGet('/api/models/llm');
 
@@ -75,7 +180,7 @@ async function loadModels() {
     data.available.forEach(model => {
         const option = document.createElement('option');
         option.value = model.name;
-        option.textContent = model.name + (model.recommended ? ' (Recomendado)' : '');
+        option.textContent = model.name + (model.recommended ? ' ⭐ (Recomendado)' : '');
         select.appendChild(option);
     });
 
@@ -83,7 +188,7 @@ async function loadModels() {
     const grid = document.getElementById('availableModels');
     grid.innerHTML = data.available.map(model => `
         <div class="model-card" onclick="selectModelFromCard('${model.name}')" style="cursor: pointer;">
-            <h3>${model.name}${model.recommended ? '<span class="badge">Recomendado</span>' : ''}</h3>
+            <h3>${model.name}${model.recommended ? '<span class="badge">⭐ Recomendado</span>' : ''}</h3>
             <p class="size">📦 ${formatSize(model.size_mb)}</p>
             <p style="color: #888; margin-top: 10px;">${model.description}</p>
         </div>
@@ -141,23 +246,18 @@ function updateModelInfo() {
 async function downloadModel() {
     if (!selectedModel) return;
 
-    // Verificar si ya está instalado
     const data = await apiGet('/api/models/llm');
     if (data.installed.includes(selectedModel.name)) {
         alert('Este modelo ya está instalado');
         return;
     }
 
-    // Mostrar spinner
     document.getElementById('spinner').classList.add('active');
     document.getElementById('progressBar').classList.add('active');
     document.getElementById('progressText').style.display = 'block';
     document.getElementById('downloadBtn').disabled = true;
 
-    // Iniciar descarga
     await apiPost('/api/models/download', { model: selectedModel.name });
-
-    // Iniciar polling de progreso
     downloadCheckInterval = setInterval(checkDownloadProgress, 500);
 }
 
@@ -184,24 +284,222 @@ async function checkDownloadProgress() {
         document.getElementById('progressText').style.display = 'none';
         document.getElementById('downloadBtn').disabled = false;
         document.getElementById('progressFill').style.width = '0%';
-
-        // Recargar modelos
         loadModels();
-
-        // Resetear selección
         document.getElementById('modelSelect').value = '';
         document.getElementById('modelInfo').style.display = 'none';
         selectedModel = null;
-
         alert('¡Modelo descargado correctamente!');
     }
 }
 
 async function deleteModel(name) {
     if (!confirm(`¿Eliminar el modelo ${name}?`)) return;
-
     await apiPost('/api/models/delete', { model: name });
     loadModels();
+}
+
+// =================== TTS ===================
+async function loadTTSVoices() {
+    const data = await apiGet('/api/tts/voices');
+
+    // Mostrar voz actual
+    const currentDisplay = document.getElementById('currentVoiceDisplay');
+    if (data.current) {
+        const parts = data.current.split('-');
+        if (parts.length >= 2) {
+            currentDisplay.innerHTML = `<strong>${data.current}</strong><br><small>${parts[0]} - ${parts[1]}</small>`;
+        } else {
+            currentDisplay.textContent = data.current;
+        }
+    }
+
+    // Mostrar voces del idioma seleccionado
+    showVoiceLang(selectedVoiceLang, data);
+}
+
+function showVoiceLang(lang, cachedData = null) {
+    selectedVoiceLang = lang;
+
+    // Actualizar botones de idioma
+    document.querySelectorAll('[id^="voice-lang-"]').forEach(b => b.classList.remove('btn-primary'));
+    document.getElementById('voice-lang-' + lang)?.classList.add('btn-primary');
+
+    const loadData = cachedData || apiGet('/api/tts/voices');
+
+    loadData.then(data => {
+        const voices = data.available[lang] || [];
+        const listContainer = document.getElementById('voicesList');
+
+        if (voices.length === 0) {
+            listContainer.innerHTML = '<p style="color: #888;">No hay voces disponibles para este idioma.</p>';
+            return;
+        }
+
+        listContainer.innerHTML = voices.map(voice => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+                <div>
+                    <strong>${voice.name}</strong>
+                    ${voice.recommended ? '<span class="badge">⭐ Recomendado</span>' : ''}
+                    <br><small style="color: #888;">${voice.quality} • ${voice.size_mb} MB</small>
+                    ${voice.installed ? '<span style="color: #00ff88;"> ✓ Instalada</span>' : ''}
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    ${voice.installed
+                        ? `<button class="btn" onclick="setVoice('${voice.id}')" ${data.current === voice.id ? 'disabled' : ''}>
+                            ${data.current === voice.id ? '✓ Actual' : 'Usar'}
+                           </button>`
+                        : `<button class="btn" onclick="downloadVoice('${voice.id}')">📥 Descargar</button>`
+                    }
+                </div>
+            </div>
+        `).join('');
+    });
+}
+
+async function downloadVoice(voiceId) {
+    const result = await apiPost('/api/tts/voices/download', { voice_id: voiceId });
+
+    if (result.success) {
+        document.getElementById('progressBarTTS').style.display = 'block';
+        document.getElementById('progressTextTTS').style.display = 'block';
+
+        // Poll de progreso
+        const checkInterval = setInterval(async () => {
+            const status = await apiGet('/api/models/download/status');
+
+            document.getElementById('progressFillTTS').style.width = status.progress + '%';
+            document.getElementById('progressPercentTTS').textContent = status.progress;
+
+            if (status.error) {
+                clearInterval(checkInterval);
+                document.getElementById('progressBarTTS').style.display = 'none';
+                document.getElementById('progressTextTTS').style.display = 'none';
+                alert('Error: ' + status.error);
+            }
+
+            if (!status.downloading && status.progress >= 100) {
+                clearInterval(checkInterval);
+                document.getElementById('progressBarTTS').style.display = 'none';
+                document.getElementById('progressTextTTS').style.display = 'none';
+                document.getElementById('progressFillTTS').style.width = '0%';
+                loadTTSVoices();
+                alert('¡Voz descargada!');
+            }
+        }, 500);
+    }
+}
+
+async function setVoice(voiceId) {
+    await apiPost('/api/tts/voices/set', { voice_id: voiceId });
+    loadTTSVoices();
+    alert('Voz establecida como actual');
+}
+
+// =================== Network / WiFi ===================
+async function loadNetworkStatus() {
+    const status = await apiGet('/api/wifi/status');
+    const container = document.getElementById('networkStatus');
+
+    if (status.connected) {
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="font-size: 3rem;">📶</div>
+                <div>
+                    <h3 style="color: #00ff88;">✓ Conectado</h3>
+                    ${status.ssid ? `<p><strong>SSID:</strong> ${status.ssid}</p>` : ''}
+                    ${status.ip ? `<p><strong>IP:</strong> ${status.ip}</p>` : ''}
+                    ${status.signal ? `<p><strong>Señal:</strong> ${status.signal}%</p>` : ''}
+                </div>
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="font-size: 3rem;">📡</div>
+                <div>
+                    <h3 style="color: #ff6b6b;">✗ No conectado</h3>
+                    <p style="color: #888;">Escanea redes WiFi disponibles</p>
+                </div>
+            </div>
+        `;
+    }
+}
+
+async function scanWiFi() {
+    const statusEl = document.getElementById('scanStatus');
+    statusEl.textContent = 'Escaneando...';
+
+    try {
+        const data = await apiGet('/api/wifi');
+        const container = document.getElementById('wifiNetworks');
+
+        if (!data.networks || data.networks.length === 0) {
+            container.innerHTML = '<p style="color: #888;">No se encontraron redes WiFi</p>';
+        } else {
+            container.innerHTML = data.networks.map(net => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 8px; cursor: pointer;"
+                     onclick="selectNetwork('${net.ssid.replace(/'/g, "\\'")}', ${net.secured})">
+                    <div>
+                        <strong>${net.ssid}</strong>
+                        ${net.secured ? '🔒' : '🔓'}
+                        <br><small style="color: #888;">Canal ${net.channel}</small>
+                    </div>
+                    <div>
+                        ${'▮'.repeat(net.signal_bars)}<span style="color: #444;">${'▯'.repeat(4 - net.signal_bars)}</span>
+                        <br><small>${net.signal}%</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        statusEl.textContent = '';
+    } catch (e) {
+        statusEl.textContent = 'Error: ' + (e.error || 'Desconocido');
+    }
+}
+
+function selectNetwork(ssid, secured) {
+    document.getElementById('wifiSSID').value = ssid;
+    document.getElementById('wifiPassword').value = '';
+    document.getElementById('wifiPassword').required = secured;
+    document.getElementById('manualConnectCard').style.display = 'block';
+}
+
+function cancelConnect() {
+    document.getElementById('manualConnectCard').style.display = 'none';
+}
+
+async function connectWiFi(e) {
+    e.preventDefault();
+
+    const ssid = document.getElementById('wifiSSID').value;
+    const password = document.getElementById('wifiPassword').value;
+
+    const statusEl = document.getElementById('scanStatus');
+    statusEl.textContent = 'Conectando...';
+
+    try {
+        await apiPost('/api/wifi/connect', { ssid, password });
+        document.getElementById('manualConnectCard').style.display = 'none';
+        statusEl.textContent = '';
+
+        // Esperar y recargar estado
+        setTimeout(() => {
+            loadNetworkStatus();
+        }, 2000);
+
+        alert('Conectando a ' + ssid + '...');
+    } catch (e) {
+        statusEl.textContent = 'Error: ' + (e.error || 'Desconocido');
+    }
+}
+
+// Utilidades
+function formatSize(mb) {
+    if (mb >= 1024) {
+        return (mb / 1024).toFixed(1) + ' GB';
+    }
+    return mb + ' MB';
 }
 
 // Cargar modelos al iniciar

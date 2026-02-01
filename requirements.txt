@@ -1,8 +1,8 @@
 # Asistente Virtual - Orange Pi 5 Ultra
 # Dependencias Python
 
-# Core Audio
-pyaudio==0.2.13
+# Core Audio (v0.2.14+ tiene soporte para Python 3.13)
+pyaudio>=0.2.14
 numpy==1.24.3
 scipy==1.10.1
 
@@ -36,5 +36,5 @@ colorlog==6.7.0
 pytest==7.4.0
 pytest-cov==4.1.0
 
-# rkllm - instalar manualmente desde GitHub
-# git clone https://github.com/airockchip/rknn-llm
+# Nota: RKLLM Runtime se instala como biblioteca nativa desde setup.sh
+# No es un paquete Python - se instala en /usr/local/lib/librkllmrt.so

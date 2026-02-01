@@ -6,12 +6,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=orangepi
-Group=orangepi
-WorkingDirectory=/home/orangepi/asistente
-Environment="PATH=/home/orangepi/asistente/venv/bin:/usr/local/bin:/usr/bin:/bin"
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=/path/to/asistente
+Environment="PATH=/path/to/asistente/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/home/orangepi/asistente/venv/bin/python /home/orangepi/asistente/src/main.py
+ExecStart=/path/to/asistente/venv/bin/python -m src.main
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -23,7 +23,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/home/orangepi/asistente/logs /home/orangepi/asistente/config
+ReadWritePaths=/path/to/asistente/logs /path/to/asistente/config
 
 # Limites
 LimitNOFILE=65536

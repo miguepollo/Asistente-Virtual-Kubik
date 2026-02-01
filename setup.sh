@@ -18,11 +18,16 @@ NC='\033[0m'
 
 # Project paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${PROJECT_DIR:-/home/orangepi/asistente}"
+PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
 VENV_DIR="$PROJECT_DIR/venv"
 MODELS_DIR="$PROJECT_DIR/models"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/install_$(date +%Y%m%d_%H%M%S).log"
+
+# Python executable en venv
+PYTHON="$VENV_DIR/bin/python"
+PIP="$VENV_DIR/bin/pip"
+SRC_DIR="$PROJECT_DIR/src"
 
 # Crear directorio de logs
 mkdir -p "$LOG_DIR"
@@ -83,6 +88,83 @@ spinner() {
 }
 
 ###############################################################################
+# RKLLM RUNTIME INSTALLATION
+###############################################################################
+install_rkllm_runtime() {
+    log "Instalando RKLLM Runtime para Rockchip NPU..."
+
+    local RKLLM_VERSION="1.2.3"
+    local RKLLM_REPO="https://github.com/airockchip/rknn-llm"
+    local BUILD_DIR="$PROJECT_DIR/build/rkllm"
+    local LIB_INSTALL_DIR="/usr/local/lib"
+    local INCLUDE_INSTALL_DIR="/usr/local/include"
+
+    # Crear directorio de build
+    mkdir -p "$BUILD_DIR"
+
+    # Verificar si ya está instalado
+    if [ -f "$LIB_INSTALL_DIR/librkllmrt.so" ]; then
+        success "RKLLM Runtime ya está instalado"
+        return 0
+    fi
+
+    # Descargar el release si no existe
+    if [ ! -d "$BUILD_DIR/rknn-llm" ]; then
+        log "Clonando repositorio rknn-llm..."
+        if git clone --depth 1 --branch release-$RKLLM_VERSION "$RKLLM_REPO" "$BUILD_DIR/rknn-llm" >> "$LOG_FILE" 2>&1; then
+            success "Repositorio clonado"
+        else
+            warn "No se pudo clonar el repositorio. Intentando descarga directa..."
+
+            # Alternativa: descargar release como zip
+            local zip_file="$BUILD_DIR/rknn-llm-release.zip"
+            if wget -qO "$zip_file" "$RKLLM_REPO/archive/refs/tags/release-$RKLLM_VERSION.zip" >> "$LOG_FILE" 2>&1; then
+                unzip -q "$zip_file" -d "$BUILD_DIR" >> "$LOG_FILE" 2>&1
+                mv "$BUILD_DIR/rknn-llm-release-$RKLLM_VERSION" "$BUILD_DIR/rknn-llm"
+                rm "$zip_file"
+                success "Release descargado"
+            else
+                warn "No se pudo descargar RKLLM Runtime (opcional para LLM)"
+                return 1
+            fi
+        fi
+    fi
+
+    # Copiar runtime para aarch64
+    local RUNTIME_PATH="$BUILD_DIR/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64"
+
+    if [ ! -d "$RUNTIME_PATH" ]; then
+        warn "No se encontró el runtime para aarch64. Puede que necesites compilarlo."
+        return 1
+    fi
+
+    # Instalar biblioteca
+    log "Instalando biblioteca librkllmrt.so..."
+    if sudo cp "$RUNTIME_PATH/librkllmrt.so" "$LIB_INSTALL_DIR/" >> "$LOG_FILE" 2>&1; then
+        sudo chmod 644 "$LIB_INSTALL_DIR/librkllmrt.so"
+        sudo ldconfig >> "$LOG_FILE" 2>&1
+        success "Biblioteca instalada en $LIB_INSTALL_DIR"
+    else
+        warn "No se pudo instalar la biblioteca"
+        return 1
+    fi
+
+    # Instalar headers
+    if [ -f "$RUNTIME_PATH/include/rkllm_api.h" ]; then
+        sudo mkdir -p "$INCLUDE_INSTALL_DIR"
+        sudo cp "$RUNTIME_PATH/include/rkllm_api.h" "$INCLUDE_INSTALL_DIR/" >> "$LOG_FILE" 2>&1
+        success "Headers instalados en $INCLUDE_INSTALL_DIR"
+    fi
+
+    # Crear symlink para el proyecto
+    mkdir -p "$PROJECT_DIR/lib"
+    ln -sf "$LIB_INSTALL_DIR/librkllmrt.so" "$PROJECT_DIR/lib/librkllmrt.so"
+
+    success "RKLLM Runtime instalado correctamente"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] RKLLM Runtime v$RKLLM_VERSION instalado" >> "$LOG_FILE"
+}
+
+###############################################################################
 # INSTALLATION FUNCTIONS
 ###############################################################################
 install_all() {
@@ -138,7 +220,7 @@ install_all() {
         success "Entorno virtual ya existe"
     fi
     source "$VENV_DIR/bin/activate"
-    if pip install --upgrade pip setuptools wheel >> "$LOG_FILE" 2>&1; then
+    if "$PIP" install --upgrade pip setuptools wheel >> "$LOG_FILE" 2>&1; then
         success "Pip actualizado en venv"
     else
         warn "Actualización de pip con advertencias"
@@ -201,16 +283,19 @@ EOF
         warn "Dependencias rknn-llm con advertencias"
     fi
 
+    # 7.1. RKLLM Runtime - Biblioteca nativa para LLM en NPU de Rockchip
+    install_rkllm_runtime
+
     # 8. Dependencias Python
     log "Instalando dependencias Python..."
     if [ -f "$PROJECT_DIR/requirements.txt" ]; then
-        if pip install -r "$PROJECT_DIR/requirements.txt" >> "$LOG_FILE" 2>&1; then
+        if "$PIP" install -r "$PROJECT_DIR/requirements.txt" >> "$LOG_FILE" 2>&1; then
             success "Dependencias Python instaladas"
         else
             warn "Dependencias Python con advertencias (revisa log)"
         fi
     else
-        if pip install pyaudio numpy scipy pvporcupine vosk flask \
+        if "$PIP" install pyaudio numpy scipy pvporcupine vosk flask \
             flask-cors requests python-dotenv pyyaml cryptography \
             webrtcvad pydub netifaces colorlog piper-tts >> "$LOG_FILE" 2>&1; then
             success "Dependencias Python instaladas"
@@ -227,7 +312,7 @@ EOF
     if [ ! -d "$MODELS_DIR/stt/vosk-model-small-es-0.42" ]; then
         log "Descargando Vosk STT (español)..."
         cd "$MODELS_DIR/stt"
-        if wget -q --show-progress https://alphacephei.com/vosk/vosk-model-small-es-0.42.zip >> "$LOG_FILE" 2>&1; then
+        if wget -q --show-progress https://huggingface.co/localstack/vosk-models/resolve/main/vosk-model-small-es-0.42.zip >> "$LOG_FILE" 2>&1; then
             if unzip -q vosk-model-small-es-0.42.zip >> "$LOG_FILE" 2>&1; then
                 rm vosk-model-small-es-0.42.zip
                 cd "$PROJECT_DIR"
@@ -249,10 +334,10 @@ EOF
         log "Descargando Piper TTS (español)..."
         cd "$MODELS_DIR/tts"
         if wget -q --show-progress \
-            https://huggingface.co/rhasspy/piper-voices/v1.0.0/es/es_ES/davefx/medium/resolve/main/es_ES-davefx-medium.onnx \
+            https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx \
             -O es_ES-davefx-medium.onnx >> "$LOG_FILE" 2>&1; then
             wget -q --show-progress \
-                https://huggingface.co/rhasspy/piper-voices/v1.0.0/es/es_ES/davefx/medium/resolve/main/es_ES-davefx-medium.onnx.json \
+                https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json \
                 -O es_ES-davefx-medium.onnx.json >> "$LOG_FILE" 2>&1
             cd "$PROJECT_DIR"
             success "Piper TTS"
@@ -284,7 +369,13 @@ EOF
     echo -e "${CYAN}📋 Log guardado en:${NC} ${LOG_FILE}"
     echo -e "${CYAN}   Ver logs con:${NC} cat $LOG_FILE"
     echo ""
-    read -p "Presiona Enter para continuar..."
+
+    # Preguntar si configurar Porcupine ahora
+    echo -e "${YELLOW}🎤 ¿Quieres configurar el wake word (Porcupine) ahora?${NC}"
+    read -p "Requiere una Access Key de Picovoice [s/N]: " config_porcupine
+    if [[ $config_porcupine =~ ^[Ss]$ ]]; then
+        setup_porcupine
+    fi
 }
 
 setup_audio_menu() {
@@ -325,13 +416,11 @@ test_system() {
 
     [ -d "$VENV_DIR" ] || { error "Entorno virtual no encontrado"; read -p "Enter..."; return; }
 
-    source "$VENV_DIR/bin/activate"
-
-    # Test 1: Imports
+    # Test 1: Imports básicos
     echo -e "${CYAN}Test 1: Módulos Python${NC}"
-    python3 << 'EOF'
+    "$PYTHON" << EOF
 import sys
-sys.path.append('/home/orangepi/asistente/src')
+sys.path.insert(0, "$SRC_DIR")
 for m in ["numpy", "pyaudio", "scipy", "webrtcvad"]:
     try: __import__(m); print(f"  ✅ {m}")
     except: print(f"  ❌ {m}")
@@ -340,36 +429,49 @@ EOF
     # Test 2: Audio
     echo ""
     echo -e "${CYAN}Test 2: Dispositivos de audio${NC}"
-    python3 << 'EOF'
+    arecord -l 2>/dev/null && echo "  ✅ Dispositivos de entrada detectados" || echo "  ❌ Sin dispositivos de entrada"
+    aplay -l 2>/dev/null && echo "  ✅ Dispositivos de salida detectados" || echo "  ❌ Sin dispositivos de salida"
+
+    # Test 3: Módulos del proyecto
+    echo ""
+    echo -e "${CYAN}Test 3: Módulos del proyecto${NC}"
+    "$PYTHON" << EOF
 import sys
-sys.path.append('/home/orangepi/asistente/src')
-from audio.capture import AudioCapture
-from audio.playback import AudioPlayback
-c = AudioCapture(); p = AudioPlayback()
-print(f"  Entrada: {len(c.list_devices())} dispositivos")
-print(f"  Salida: {len(p.list_devices())} dispositivos")
+sys.path.insert(0, "$SRC_DIR")
+try:
+    from audio.capture import AudioCapture
+    from audio.playback import AudioPlayback
+    from audio.vad import VAD
+    print(f"  ✅ audio.capture")
+    print(f"  ✅ audio.playback")
+    print(f"  ✅ audio.vad")
+except Exception as e:
+    print(f"  ❌ Módulos audio: {e}")
 EOF
 
-    # Test 3: VAD
+    # Test 4: VAD
     echo ""
-    echo -e "${CYAN}Test 3: VAD${NC}"
-    python3 << 'EOF'
+    echo -e "${CYAN}Test 4: VAD${NC}"
+    "$PYTHON" << EOF
 import sys
-sys.path.append('/home/orangepi/asistente/src')
-from audio.vad import VAD
-import numpy as np
-vad = VAD()
-silence = np.zeros(16000, dtype=np.int16)
-t = np.linspace(0, 1, 16000)
-tone = (np.sin(2*np.pi*200*t)*10000).astype(np.int16)
-audio = np.concatenate([silence, tone, silence])
-has_speech, _ = vad.process_stream(audio)
-print(f"  ✅ VAD detecta voz: {has_speech}")
+sys.path.insert(0, "$SRC_DIR")
+try:
+    from audio.vad import VAD
+    import numpy as np
+    vad = VAD()
+    silence = np.zeros(16000, dtype=np.int16)
+    t = np.linspace(0, 1, 16000)
+    tone = (np.sin(2*np.pi*200*t)*10000).astype(np.int16)
+    audio = np.concatenate([silence, tone, silence])
+    has_speech, _ = vad.process_stream(audio)
+    print(f"  ✅ VAD detecta voz: {has_speech}")
+except Exception as e:
+    print(f"  ❌ VAD error: {e}")
 EOF
 
-    # Test 4: Modelos
+    # Test 5: Modelos
     echo ""
-    echo -e "${CYAN}Test 4: Modelos${NC}"
+    echo -e "${CYAN}Test 5: Modelos${NC}"
     [ -d "$MODELS_DIR/stt/vosk-model-small-es-0.42" ] && echo "  ✅ Vosk STT" || echo "  ❌ Vosk STT"
     [ -f "$MODELS_DIR/tts/es_ES-davefx-medium.onnx" ] && echo "  ✅ Piper TTS" || echo "  ❌ Piper TTS"
 
@@ -379,21 +481,189 @@ EOF
     read -p "Presiona Enter para continuar..."
 }
 
-show_wakeword_info() {
+setup_porcupine() {
     clear
     header
-    echo -e "${BOLD}🎤 CONFIGURACIÓN WAKE WORD${NC}"
+    echo -e "${BOLD}🎤 CONFIGURACIÓN WAKE WORD (PORCUPINE)${NC}"
     echo ""
-    echo "El wake word requiere configuración manual:"
+    echo "Porcupine requiere una Access Key de Picovoice."
     echo ""
     echo "  1. Ve a: https://console.picovoice.ai"
-    echo "  2. Crea cuenta gratuita"
+    echo "  2. Crea cuenta gratuita (Free Tier)"
     echo "  3. Copia tu Access Key"
-    echo "  4. Entrena la palabra 'Asistente' en español"
-    echo "  5. Descarga el archivo .ppn"
-    echo "  6. Guárdalo en: $MODELS_DIR/wakeword/asistente_es.ppn"
     echo ""
-    echo "Luego añade la key a config/config.json"
+    echo -e "${CYAN}Opciones de wake word:${NC}"
+    echo "  - Keywords predefinidas (porcupine, computer, jarvis, etc.)"
+    echo "  - Keywords personalizadas (.ppn) - crea en https://picovoice.ai/console/ppn"
+    echo ""
+
+    # Verificar si ya existe una API key
+    local current_key=""
+    if [ -f "$PROJECT_DIR/.env" ]; then
+        current_key=$(grep "^PICOVOCICE_ACCESS_KEY=" "$PROJECT_DIR/.env" 2>/dev/null | cut -d'=' -f2)
+        if [ -n "$current_key" ] && [ "$current_key" != "your_access_key_here" ]; then
+            echo -e "${GREEN}Access Key actual:${NC} ${current_key:0:10}...${current_key: -4}"
+            echo ""
+            read -p "¿Usar la key existente? [S/n]: " use_existing
+            if [[ ! $use_existing =~ ^[Nn]$ ]]; then
+                api_key="$current_key"
+            else
+                api_key=""
+            fi
+        fi
+    fi
+
+    if [ -z "$api_key" ]; then
+        echo ""
+        read -p "Introduce tu Access Key de Picovoice: " api_key
+
+        if [ -z "$api_key" ]; then
+            warn "No se introdujo Access Key"
+            read -p "Presiona Enter para continuar..."
+            return 1
+        fi
+
+        # Crear o actualizar .env
+        if [ -f "$PROJECT_DIR/.env" ]; then
+            if grep -q "^PICOVOCICE_ACCESS_KEY=" "$PROJECT_DIR/.env"; then
+                sed -i "s|^PICOVOCICE_ACCESS_KEY=.*|PICOVOCICE_ACCESS_KEY=$api_key|" "$PROJECT_DIR/.env"
+            else
+                echo "PICOVOCICE_ACCESS_KEY=$api_key" >> "$PROJECT_DIR/.env"
+            fi
+        else
+            mkdir -p "$PROJECT_DIR"
+            echo "PICOVOCICE_ACCESS_KEY=$api_key" > "$PROJECT_DIR/.env"
+        fi
+        success "Access Key guardada en .env"
+    fi
+
+    # Configurar keywords
+    echo ""
+    echo -e "${BOLD}CONFIGURAR PALABRAS DE ACTIVACIÓN${NC}"
+    echo ""
+    echo "Puedes agregar múltiples palabras. Cada una debe:"
+    echo "  - Ser predefinida de Porcupine, O"
+    echo "  - Ser un archivo .ppn personalizado en $MODELS_DIR/wakeword/"
+    echo ""
+
+    # Array para keywords
+    declare -a keywords_list=()
+
+    while true; do
+        echo ""
+        echo "Palabra actual:"
+        [ ${#keywords_list[@]} -eq 0 ] && echo "  (ninguna configurada)" || printf "  - %s\n" "${keywords_list[@]}"
+        echo ""
+        echo "Agregar nueva palabra:"
+        echo "  1) porcupine (predefinida, español)"
+        echo "  2) computer (predefinida, inglés)"
+        echo "  3) jarvis (predefinida, inglés)"
+        echo "  4) alexa (predefinida, inglés)"
+        echo "  5) hey google (predefinida, inglés)"
+        echo "  6) Archivo .ppn personalizado"
+        echo "  0) Terminar y guardar"
+        echo ""
+        read -p "Opción: " kw_opt
+
+        case "$kw_opt" in
+            1)
+                keywords_list+=("porcupine:builtin:es:0.5")
+                success "Agregado: porcupine"
+                ;;
+            2)
+                keywords_list+=("computer:builtin:en:0.5")
+                success "Agregado: computer"
+                ;;
+            3)
+                keywords_list+=("jarvis:builtin:en:0.5")
+                success "Agregado: jarvis"
+                ;;
+            4)
+                keywords_list+=("alexa:builtin:en:0.5")
+                success "Agregado: alexa"
+                ;;
+            5)
+                keywords_list+=("hey google:builtin:en:0.5")
+                success "Agregado: hey google"
+                ;;
+            6)
+                read -p "Ruta al archivo .ppn: " ppn_path
+                if [ -f "$ppn_path" ]; then
+                    read -p "Nombre para la palabra: " ppn_name
+                    read -p "Sensibilidad (0.0-1.0) [0.5]: " ppn_sens
+                    ppn_sens=${ppn_sens:-0.5}
+                    keywords_list+=("${ppn_name}:${ppn_path}:custom:${ppn_sens}")
+                    success "Agregado: ${ppn_name}"
+                else
+                    error "Archivo no encontrado: $ppn_path"
+                fi
+                ;;
+            0)
+                if [ ${#keywords_list[@]} -eq 0 ]; then
+                    warn "Debes agregar al menos una palabra"
+                    continue
+                fi
+                break
+                ;;
+            *)
+                echo "Opción no válida"
+                ;;
+        esac
+    done
+
+    # Construir JSON de keywords
+    local keywords_json="["
+    local first=true
+    for kw in "${keywords_list[@]}"; do
+        IFS=':' read -r name path lang sens <<< "$kw"
+        if [ "$first" = true ]; then
+            first=false
+        else
+            keywords_json+=","
+        fi
+
+        # Para builtin, usar path especial
+        if [ "$lang" = "builtin" ]; then
+            keywords_json+="{\"name\":\"$name\",\"path\":\"builtin:$lang\",\"sensitivity\":$sens}"
+        else
+            # Escapar barras en path
+            path_escaped=$(echo "$path" | sed 's/\\/\\\\/g')
+            keywords_json+="{\"name\":\"$name\",\"path\":\"$path_escaped\",\"sensitivity\":$sens}"
+        fi
+    done
+    keywords_json+="]"
+
+    # Actualizar config.json
+    if [ -f "$PROJECT_DIR/config/config.json" ]; then
+        "$PYTHON" << EOF
+import json
+config_path = "$PROJECT_DIR/config/config.json"
+with open(config_path, 'r') as f:
+    config = json.load(f)
+
+# Asegurar que wake_word existe
+if 'wake_word' not in config:
+    config['wake_word'] = {}
+
+config['wake_word']['enabled'] = True
+config['wake_word']['keywords'] = $keywords_json
+
+with open(config_path, 'w') as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
+EOF
+        success "Configuración actualizada"
+        echo ""
+        echo -e "${CYAN}Palabras configuradas:${NC}"
+        for kw in "${keywords_list[@]}"; do
+            IFS=':' read -r name path lang sens <<< "$kw"
+            echo "  - $name"
+        done
+    else
+        error "No se encontró config.json"
+    fi
+
+    echo ""
+    echo -e "${GREEN}${BOLD}✅ Porcupine configurado correctamente${NC}"
     echo ""
     read -p "Presiona Enter para continuar..."
 }
@@ -414,6 +684,9 @@ show_status() {
     # venv
     if [ -d "$VENV_DIR" ]; then
         echo -e "  Venv:        ${GREEN}✅${NC} Creado"
+        if [ -x "$PYTHON" ]; then
+            echo -e "    └─ Versión: $($PYTHON --version)"
+        fi
     else
         echo -e "  Venv:        ${RED}❌ No creado${NC}"
     fi
@@ -436,6 +709,41 @@ show_status() {
         echo -e "  Piper TTS:   ${GREEN}✅${NC} Instalado"
     else
         echo -e "  Piper TTS:   ${RED}❌ No instalado${NC}"
+    fi
+
+    # Porcupine
+    if [ -f "$PROJECT_DIR/.env" ]; then
+        pv_key=$(grep "^PICOVOCICE_ACCESS_KEY=" "$PROJECT_DIR/.env" 2>/dev/null | cut -d'=' -f2)
+        if [ -n "$pv_key" ] && [ "$pv_key" != "your_access_key_here" ]; then
+            # Mostrar keywords configurados
+            pv_keywords=$("$PYTHON" -c "
+import json
+try:
+    with open('$PROJECT_DIR/config/config.json', 'r') as f:
+        config = json.load(f)
+    keywords = config.get('wake_word', {}).get('keywords', [])
+    if keywords:
+        kw_names = [kw.get('name', '?') for kw in keywords]
+        print(', '.join(kw_names))
+    else:
+        print('(ninguno)')
+except:
+        print('(error)')
+" 2>/dev/null)
+            echo -e "  Porcupine:  ${GREEN}✅${NC} Configurado (${pv_key:0:8}...)"
+            echo -e "    Keywords: ${CYAN}${pv_keywords}${NC}"
+        else
+            echo -e "  Porcupine:  ${YELLOW}⚠${NC} Sin API key"
+        fi
+    else
+        echo -e "  Porcupine:  ${RED}❌ No configurado${NC}"
+    fi
+
+    # RKLLM Runtime
+    if [ -f "/usr/local/lib/librkllmrt.so" ] || [ -f "/usr/lib/librkllmrt.so" ]; then
+        echo -e "  RKLLM RT:   ${GREEN}✅${NC} Instalado (NPU LLM)"
+    else
+        echo -e "  RKLLM RT:   ${YELLOW}⚠${NC} No instalado (opcional)"
     fi
 
     # Servicios
@@ -485,6 +793,121 @@ show_logs() {
     read -p "Presiona Enter para continuar..."
 }
 
+create_custom_wakeword() {
+    clear
+    header
+    echo -e "${BOLD}🎤 CREAR WAKE WORD PERSONALIZADO${NC}"
+    echo ""
+    echo "Este generador crea modelos de wake word personalizados usando:"
+    echo "  - Piper TTS para generar muestras de voz en español"
+    echo "  - openWakeWord para entrenar el modelo"
+    echo ""
+    echo "El proceso puede tardar varios minutos..."
+    echo ""
+    source venv/bin/activate
+    # Verificar dependencias
+    if ! command -v piper-tts &> /dev/null && ! "$PIP" show piper-tts &> /dev/null; then
+        warn "Piper TTS no está instalado. Instalando..."
+        "$PIP" install piper-tts >> "$LOG_FILE" 2>&1
+    fi
+
+    # Pedir palabra
+    while true; do
+        read -p "Introduce la palabra (ej: asistente, hola, hey): " word
+        if [ -n "$word" ]; then
+            # Validar que sea solo letras y espacios
+            if [[ "$word" =~ ^[a-zA-ZáéíóúñÁÉÍÓÚÑ[:space:]]+$ ]]; then
+                break
+            else
+                error "Solo se permiten letras y espacios"
+            fi
+        fi
+    done
+
+    # Opciones avanzadas
+    echo ""
+    read -p "Número de muestras [100]: " samples
+    samples=${samples:-100}
+
+    read -p "¿Probar el modelo después de crearlo? [s/N]: " test_model
+    if [[ $test_model =~ ^[Ss]$ ]]; then
+        test_flag="--test"
+    else
+        test_flag=""
+    fi
+
+    # Asegurar directorio de salida
+    mkdir -p "$MODELS_DIR/wakeword"
+
+    echo ""
+    log "Generando wake word: $word..."
+    echo ""
+
+    # Ejecutar generador
+    local result
+    result=$("$PYTHON" "$SRC_DIR/utils/custom_wakeword.py" \
+        "$word" \
+        --output "$MODELS_DIR/wakeword" \
+        --samples "$samples" \
+        $test_flag \
+        --print-config 2>&1)
+
+    local exit_code=$?
+
+    echo "$result"
+
+    if [ $exit_code -eq 0 ]; then
+        echo ""
+        success "¡Wake word creado exitosamente!"
+
+        # Extraer config JSON del resultado
+        local config_json
+        config_json=$(echo "$result" | sed -n '/{/,/}/p')
+
+        if [ -n "$config_json" ]; then
+            echo ""
+            echo "¿Agregar al config.json automáticamente? [s/N]: "
+            read -t 10 add_config || add_config="n"
+
+            if [[ $add_config =~ ^[Ss]$ ]]; then
+                "$PYTHON" << EOF
+import json
+
+config_path = "$PROJECT_DIR/config/config.json"
+with open(config_path, 'r') as f:
+    config = json.load(f)
+
+# Asegurar wake_word existe
+if 'wake_word' not in config:
+    config['wake_word'] = {}
+if 'keywords' not in config['wake_word']:
+    config['wake_word']['keywords'] = []
+
+# Agregar nueva keyword
+new_kw = $config_json
+config['wake_word']['keywords'].append(new_kw)
+config['wake_word']['enabled'] = True
+
+with open(config_path, 'w') as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
+
+print(f"✅ Agregado '{new_kw['name']}' al config.json")
+EOF
+            fi
+        fi
+
+        echo ""
+        echo "El modelo está guardado en: $MODELS_DIR/wakeword/${word}.tflite"
+
+    else
+        error "Falló la creación del wake word"
+        echo "Revisa el log para más detalles: $LOG_FILE"
+    fi
+
+    echo ""
+    read -p "Presiona Enter para continuar..."
+}
+
 ###############################################################################
 # HEADER & MENU
 ###############################################################################
@@ -506,10 +929,11 @@ show_menu() {
     echo -e "  ${GREEN}1.${NC} 🚀 Instalar TODO (recomendado)"
     echo -e "  ${CYAN}2.${NC} 🎙️  Configurar audio"
     echo -e "  ${CYAN}3.${NC} 🧪 Probar sistema"
-    echo -e "  ${CYAN}4.${NC} 🎤 Configurar wake word"
+    echo -e "  ${CYAN}4.${NC} 🎤 Configurar Porcupine (API key)"
     echo -e "  ${CYAN}5.${NC} 📊 Ver estado"
     echo -e "  ${CYAN}6.${NC} 🔧 Instalar servicio systemd"
     echo -e "  ${CYAN}7.${NC} 📋 Ver logs"
+    echo -e "  ${YELLOW}8.${NC} ✨ Crear wake word personalizado"
     echo ""
     echo -e "  ${YELLOW}0.${NC} 🚪 Salir"
     echo ""
@@ -527,10 +951,11 @@ main() {
             1) install_all ;;
             2) setup_audio_menu ;;
             3) test_system ;;
-            4) show_wakeword_info ;;
+            4) setup_porcupine ;;
             5) show_status ;;
             6) install_service ;;
             7) show_logs ;;
+            8) create_custom_wakeword ;;
             0|q|Q) echo "¡Hasta luego!"; exit 0 ;;
             *) echo "Opción no válida"; sleep 1 ;;
         esac

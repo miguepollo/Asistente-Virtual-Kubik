@@ -24,7 +24,7 @@ class STTEngine:
 
     def __init__(
         self,
-        model_path: str = "/home/orangepi/asistente/models/stt/vosk-model-small-es-0.42",
+        model_path: str = "/home/orangepi/asistente2/models/stt/vosk-model-small-es-0.42",
         sample_rate: int = 16000
     ):
         """

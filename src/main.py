@@ -31,7 +31,7 @@ from utils.config_loader import get_config
 ###############################################################################
 # Configuration
 ###############################################################################
-PROJECT_DIR = Path("/home/orangepi/asistente")
+PROJECT_DIR = Path("/home/orangepi/asistente2")
 CONFIG_DIR = PROJECT_DIR / "config"
 LOGS_DIR = PROJECT_DIR / "logs"
 
@@ -123,17 +123,105 @@ class Assistant:
 
         # Wake Word (opcional)
         access_key = self.config.get_api_key("picovoice", "access_key")
-        wakeword_path = self.config.get("wake_word.model_path",
-            f"{PROJECT_DIR}/models/wakeword/asistente_es.ppn")
 
-        if access_key and os.path.exists(wakeword_path):
-            self.wakeword = WakeWordEngine(
-                access_key=access_key,
-                keyword_path=wakeword_path,
-                sensitivity=self.config.get("wake_word.sensitivity", 0.5),
-                on_detection=self._on_wakeword_detected
-            )
-            logger.info(f"  Wake Word: ✅")
+        # Obtener configuración de wake word
+        wake_config = self.config.get("wake_word", {})
+        wake_enabled = wake_config.get("enabled", True)
+        wake_engine = wake_config.get("engine", "auto")
+
+        if not wake_enabled:
+            self.wakeword = None
+            logger.info(f"  Wake Word: ⚠️  Desactivado en config")
+            return
+
+        # Soporte para Vosk como motor de wake word
+        if wake_engine == "vosk" or wake_config.get("wake_words"):
+            wake_words = wake_config.get("wake_words", ["asistente"])
+            wake_model_path = wake_config.get("model_path")
+
+            try:
+                self.wakeword = WakeWordEngine(
+                    wake_words=wake_words,
+                    model_path=wake_model_path,
+                    on_detection=self._on_wakeword_detected,
+                    engine="vosk"
+                )
+                logger.info(f"  Wake Word: ✅ ({wake_words}) [Vosk]")
+            except Exception as e:
+                logger.error(f"  Wake Word: ❌ Error iniciando Vosk: {e}")
+                self.wakeword = None
+            return
+
+        # Obtener keywords del config (para Porcupine/openWakeWord)
+        keywords_config = wake_config.get("keywords")
+
+        # Compatibilidad con config antiguo
+        if not keywords_config:
+            # Formato antiguo: usar model_path y sensitivity
+            wakeword_path = wake_config.get("model_path",
+                f"{PROJECT_DIR}/models/wakeword/asistente_es.ppn")
+            if os.path.exists(wakeword_path):
+                keywords_config = [{
+                    "path": wakeword_path,
+                    "sensitivity": wake_config.get("sensitivity", 0.5),
+                    "name": wake_config.get("keyword", "asistente")
+                }]
+
+        # Procesar keywords (soporta .ppn de Porcupine y .tflite de openWakeWord)
+        if keywords_config:
+            valid_keywords = []
+            engine_type = "unknown"
+
+            for kw in keywords_config:
+                if os.path.exists(kw["path"]):
+                    valid_keywords.append(kw)
+
+                    # Detectar tipo de motor
+                    if kw["path"].endswith(".tflite"):
+                        engine_type = "openwakeword"
+                    elif kw["path"].endswith(".ppn"):
+                        engine_type = "porcupine"
+                else:
+                    logger.warning(f"Keyword file no encontrado: {kw['path']}")
+
+            if valid_keywords:
+                try:
+                    # openWakeWord no requiere access_key
+                    if engine_type == "openwakeword":
+                        self.wakeword = WakeWordEngine(
+                            access_key=None,  # No necesario para openWakeWord
+                            keywords=valid_keywords,
+                            on_detection=self._on_wakeword_detected,
+                            engine="openwakeword"
+                        )
+                        kw_names = [kw["name"] for kw in valid_keywords]
+                        logger.info(f"  Wake Word: ✅ ({kw_names}) [openWakeWord]")
+
+                    # Porcupine requiere access_key
+                    elif engine_type == "porcupine":
+                        if access_key:
+                            self.wakeword = WakeWordEngine(
+                                access_key=access_key,
+                                keywords=valid_keywords,
+                                on_detection=self._on_wakeword_detected,
+                                engine="porcupine"
+                            )
+                            kw_names = [kw["name"] for kw in valid_keywords]
+                            logger.info(f"  Wake Word: ✅ ({kw_names}) [Porcupine]")
+                        else:
+                            logger.warning(f"  Wake Word: ⚠️  .ppn detectado pero falta API key")
+                            self.wakeword = None
+
+                    else:
+                        self.wakeword = None
+                        logger.info(f"  Wake Word: ⚠️  Tipo de motor no reconocido")
+
+                except Exception as e:
+                    logger.error(f"  Wake Word: ❌ Error iniciando: {e}")
+                    self.wakeword = None
+            else:
+                self.wakeword = None
+                logger.info(f"  Wake Word: ⚠️  No hay archivos válidos")
         else:
             self.wakeword = None
             logger.info(f"  Wake Word: ⚠️  No configurado")
@@ -143,9 +231,16 @@ class Assistant:
         logger.info(f"Señal recibida: {signum}")
         self.stop()
 
-    def _on_wakeword_detected(self):
-        """Callback cuando se detecta el wake word."""
-        logger.info("🎤 ¡WAKE WORD DETECTADO!")
+    def _on_wakeword_detected(self, keyword_name: str = None):
+        """Callback cuando se detecta el wake word.
+
+        Args:
+            keyword_name: Nombre del keyword detectado (ej: "asistente", "hey")
+        """
+        if keyword_name:
+            logger.info(f"🎤 ¡WAKE WORD '{keyword_name}' DETECTADO!")
+        else:
+            logger.info("🎤 ¡WAKE WORD DETECTADO!")
         self.start_listening()
 
    ###############################################################################

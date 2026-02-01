@@ -18,8 +18,8 @@ class Config:
 
     def __init__(
         self,
-        config_path: str = "/home/orangepi/asistente/config/config.json",
-        api_keys_path: str = "/home/orangepi/asistente/config/api_keys.json",
+        config_path: str = "/home/orangepi/asistente2/config/config.json",
+        api_keys_path: str = "/home/orangepi/asistente2/config/api_keys.json",
         encryption_key: Optional[bytes] = None
     ):
         """
@@ -125,8 +125,7 @@ class Config:
             },
             "wake_word": {
                 "enabled": True,
-                "keyword": "asistente",
-                "sensitivity": 0.5
+                "keywords": []
             },
             "stt": {
                 "engine": "vosk",
@@ -292,7 +291,12 @@ if __name__ == '__main__':
     print("\n=== Configuración actual ===")
     print(f"Sample rate: {config.get('audio.sample_rate')}")
     print(f"VAD aggressiveness: {config.get('vad.aggressiveness')}")
-    print(f"Wake word: {config.get('wake_word.keyword')}")
+    keywords = config.get('wake_word.keywords', [])
+    if keywords:
+        kw_names = [kw.get('name', '?') for kw in keywords]
+        print(f"Wake words: {kw_names}")
+    else:
+        print("Wake words: No configurados")
 
     print("\n=== Propiedades ===")
     print(f"Audio: {config.audio}")

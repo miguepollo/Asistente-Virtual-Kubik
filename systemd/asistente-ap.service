@@ -7,10 +7,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/orangepi/asistente
-Environment="PATH=/home/orangepi/asistente/venv/bin:/usr/local/bin:/usr/bin:/bin"
+WorkingDirectory=/home/orangepi/asistente2
+Environment="PATH=/home/orangepi/asistente2/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/home/orangepi/asistente/venv/bin/python /home/orangepi/asistente/src/utils/ap_manager.py
+ExecStart=/home/orangepi/asistente2/venv/bin/python /home/orangepi/asistente2/src/utils/ap_manager.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

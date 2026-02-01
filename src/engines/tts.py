@@ -18,7 +18,7 @@ class TTSEngine:
 
     def __init__(
         self,
-        model_path: str = "/home/orangepi/asistente/models/tts/es_ES-davefx-medium.onnx",
+        model_path: str = "/home/orangepi/asistente2/models/tts/es_ES-davefx-medium.onnx",
         config_path: Optional[str] = None,
         speed: float = 1.0
     ):

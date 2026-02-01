@@ -10,6 +10,7 @@ import logging
 import subprocess
 import threading
 import time
+import requests
 from pathlib import Path
 from typing import Dict, List
 
@@ -31,7 +32,7 @@ app.config['SECRET_KEY'] = 'asistente-secret-key'
 app.config['JSON_AS_ASCII'] = False
 
 # Directorios
-PROJECT_DIR = Path("/home/orangepi/asistente")
+PROJECT_DIR = Path("/home/orangepi/asistente2")
 MODELS_DIR = PROJECT_DIR / "models"
 CONFIG_DIR = PROJECT_DIR / "config"
 LOGS_DIR = PROJECT_DIR / "logs"
@@ -41,7 +42,68 @@ download_status = {
     "downloading": False,
     "model": None,
     "progress": 0,
-    "error": None
+    "error": None,
+    "type": None  # "llm" o "tts"
+}
+
+###############################################################################
+# CONSTANTES - Voces de Piper TTS
+###############################################################################
+PIPER_VOICES = {
+    "es_ES": [
+        {
+            "name": "davefx",
+            "quality": "medium",
+            "size_mb": 65,
+            "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx",
+            "url_json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json",
+            "recommended": True
+        },
+        {
+            "name": "carlfm",
+            "quality": "medium",
+            "size_mb": 65,
+            "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/medium/es_ES-carlfm-medium.onnx",
+            "url_json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/medium/es_ES-carlfm-medium.onnx.json",
+            "recommended": False
+        }
+    ],
+    "es_MX": [
+        {
+            "name": "ald",
+            "quality": "medium",
+            "size_mb": 65,
+            "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_MX/ald/medium/es_MX-ald-medium.onnx",
+            "url_json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_MX/ald/medium/es_MX-ald-medium.onnx.json",
+            "recommended": False
+        }
+    ],
+    "en_US": [
+        {
+            "name": "amy",
+            "quality": "medium",
+            "size_mb": 65,
+            "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx",
+            "url_json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json",
+            "recommended": True
+        },
+        {
+            "name": "arctic",
+            "quality": "medium",
+            "size_mb": 65,
+            "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/arctic/medium/en_US-arctic-medium.onnx",
+            "url_json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/arctic/medium/en_US-arctic-medium.onnx.json",
+            "recommended": False
+        },
+        {
+            "name": "joe",
+            "quality": "medium",
+            "size_mb": 65,
+            "url": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/joe/medium/en_US-joe-medium.onnx",
+            "url_json": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/joe/medium/en_US-joe-medium.onnx.json",
+            "recommended": False
+        }
+    ]
 }
 
 ###############################################################################
@@ -281,22 +343,316 @@ def api_assistant_restart():
 def api_wifi_list():
     """Listar redes WiFi disponibles."""
     try:
+        # Primero escanear redes
+        subprocess.run(["nmcli", "dev", "wifi", "rescan"], capture_output=True, timeout=5)
+        time.sleep(1)
+
         result = subprocess.run(
-            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
+            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY,CHAN", "dev", "wifi", "list"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=10
         )
         networks = []
+        seen_ssids = set()
+
         for line in result.stdout.strip().split('\n'):
             if line:
                 parts = line.split(':')
-                if len(parts) >= 3:
-                    networks.append({
-                        "ssid": parts[0],
-                        "signal": parts[1],
-                        "security": parts[2]
-                    })
+                if len(parts) >= 3 and parts[0]:
+                    ssid = parts[0]
+                    # Evitar duplicados
+                    if ssid not in seen_ssids:
+                        seen_ssids.add(ssid)
+                        signal_strength = int(parts[1]) if parts[1].isdigit() else 0
+                        # Calcular calidad de señal (0-100)
+                        quality = max(0, min(100, signal_strength))
+
+                        networks.append({
+                            "ssid": ssid,
+                            "signal": quality,
+                            "signal_bars": 4 if quality > 75 else (3 if quality > 50 else (2 if quality > 25 else 1)),
+                            "security": parts[2],
+                            "channel": parts[3] if len(parts) > 3 else "Unknown",
+                            "secured": parts[2] != ""
+                        })
+
+        # Ordenar por señal
+        networks.sort(key=lambda x: x["signal"], reverse=True)
         return jsonify({"networks": networks})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Timeout escaneando redes"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/wifi/connect', methods=['POST'])
+def api_wifi_connect():
+    """Conectar a una red WiFi."""
+    try:
+        data = request.json
+        ssid = data.get("ssid")
+        password = data.get("password", "")
+
+        if not ssid:
+            return jsonify({"error": "SSID es requerido"}), 400
+
+        # Verificar si ya existe una conexión para este SSID
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+            capture_output=True,
+            text=True
+        )
+
+        existing_conn = None
+        for line in result.stdout.strip().split('\n'):
+            if line:
+                parts = line.split(':')
+                if len(parts) == 2 and parts[0] == ssid and parts[1] == "802-11-wireless":
+                    existing_conn = ssid
+                    break
+
+        if existing_conn:
+            # Actualizar conexión existente
+            subprocess.run(
+                ["nmcli", "connection", "modify", ssid, "wifi-sec.psk", password],
+                capture_output=True
+            )
+        else:
+            # Crear nueva conexión
+            cmd = ["nmcli", "device", "wifi", "connect", ssid]
+            if password:
+                cmd.extend(["password", password])
+            subprocess.run(cmd, capture_output=True, timeout=30)
+
+        return jsonify({"success": True, "ssid": ssid})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Timeout conectando"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/wifi/disconnect', methods=['POST'])
+def api_wifi_disconnect():
+    """Desconectar del WiFi actual."""
+    try:
+        subprocess.run(
+            ["nmcli", "connection", "down", "wlan0"],
+            capture_output=True
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/wifi/status')
+def api_wifi_status():
+    """Obtener estado de la conexión WiFi actual."""
+    try:
+        # Obtener información de conexión
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
+            capture_output=True,
+            text=True
+        )
+
+        current = None
+        for line in result.stdout.strip().split('\n'):
+            if line.startswith('yes'):
+                parts = line.split(':')
+                if len(parts) >= 4:
+                    signal_strength = int(parts[2]) if parts[2].isdigit() else 0
+                    current = {
+                        "ssid": parts[1],
+                        "signal": max(0, min(100, signal_strength)),
+                        "security": parts[3],
+                        "connected": True
+                    }
+                break
+
+        # Si no hay conexión activa, verificar IP
+        if not current:
+            ip_result = subprocess.run(
+                ["nmcli", "-t", "-f", "IP4.ADDRESS", "device", "show", "wlan0"],
+                capture_output=True,
+                text=True
+            )
+            if ip_result.stdout.strip():
+                ip = ip_result.stdout.strip().split(':')[-1]
+                current = {"connected": True, "ip": ip}
+            else:
+                current = {"connected": False}
+
+        # Obtener IP si está conectado
+        if current and current.get("connected") and "ip" not in current:
+            ip_result = subprocess.run(
+                ["hostname", "-I"],
+                capture_output=True,
+                text=True
+            )
+            ips = ip_result.stdout.strip().split()
+            current["ip"] = ips[0] if ips else "Unknown"
+
+        return jsonify(current)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/wifi/available')
+def api_wifi_available():
+    """Verificar si WiFi está disponible."""
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"],
+            capture_output=True,
+            text=True
+        )
+
+        wifi_available = False
+        for line in result.stdout.strip().split('\n'):
+            if line and 'wifi' in line.lower():
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    wifi_available = parts[2] in ['connected', 'available']
+                break
+
+        return jsonify({"available": wifi_available})
+    except:
+        return jsonify({"available": False})
+
+###############################################################################
+# API: Piper TTS Voices
+###############################################################################
+@app.route('/api/tts/voices')
+def api_tts_voices():
+    """Obtener voces de Piper TTS disponibles e instaladas."""
+    try:
+        tts_dir = MODELS_DIR / "tts"
+
+        # Detectar voces instaladas
+        installed = []
+        if tts_dir.exists():
+            for voice_file in tts_dir.glob("*.onnx"):
+                # Extraer nombre de voz del archivo
+                # Formato: es_ES-davefx-medium.onnx
+                name = voice_file.stem
+                installed.append(name)
+
+        # Agrupar voces disponibles por idioma
+        available = {}
+        for lang, voices in PIPER_VOICES.items():
+            available[lang] = []
+            for voice in voices:
+                # Verificar si está instalada
+                voice_file = f"{lang}-{voice['name']}-{voice['quality']}"
+                is_installed = any(voice_file in v for v in installed)
+
+                available[lang].append({
+                    "id": f"{lang}-{voice['name']}-{voice['quality']}",
+                    "name": voice['name'],
+                    "quality": voice['quality'],
+                    "size_mb": voice['size_mb'],
+                    "installed": is_installed,
+                    "recommended": voice['recommended'],
+                    "language": lang
+                })
+
+        # Obtener voz actual desde configuración
+        config = get_config()
+        current_voice = config.get("tts.voice", "es_ES-davefx-medium")
+
+        return jsonify({
+            "available": available,
+            "installed": installed,
+            "current": current_voice
+        })
+    except Exception as e:
+        logger.error(f"Error obteniendo voces TTS: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tts/voices/download', methods=['POST'])
+def api_tts_download_voice():
+    """Descargar una voz de Piper TTS."""
+    global download_status
+
+    if download_status["downloading"]:
+        return jsonify({"error": "Ya hay una descarga en curso"}), 400
+
+    try:
+        data = request.json
+        voice_id = data.get("voice_id")
+
+        if not voice_id:
+            return jsonify({"error": "No se especificó voz"}), 400
+
+        # Buscar la voz en PIPER_VOICES
+        voice_info = None
+        for lang, voices in PIPER_VOICES.items():
+            for voice in voices:
+                v_id = f"{lang}-{voice['name']}-{voice['quality']}"
+                if v_id == voice_id:
+                    voice_info = {**voice, "lang": lang}
+                    break
+            if voice_info:
+                break
+
+        if not voice_info:
+            return jsonify({"error": "Voz no encontrada"}), 404
+
+        # Iniciar descarga en thread
+        thread = threading.Thread(
+            target=_download_tts_voice,
+            args=(voice_info,)
+        )
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({"success": True, "voice_id": voice_id})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tts/voices/set', methods=['POST'])
+def api_tts_set_voice():
+    """Establecer la voz actual de TTS."""
+    try:
+        data = request.json
+        voice_id = data.get("voice_id")
+
+        if not voice_id:
+            return jsonify({"error": "No se especificó voz"}), 400
+
+        # Guardar en configuración
+        config = get_config()
+        config.set("tts.voice", voice_id)
+        config.save()
+
+        return jsonify({"success": True, "voice_id": voice_id})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tts/test', methods=['POST'])
+def api_tts_test():
+    """Probar la voz de TTS actual."""
+    try:
+        # Ejecutar prueba de TTS
+        import subprocess
+        result = subprocess.run(
+            ["piper-tts", "--help"],
+            capture_output=True,
+            timeout=5
+        )
+
+        # Generar un archivo de prueba
+        test_file = MODELS_DIR / "tts" / "test_output.wav"
+        config = get_config()
+        voice = config.get("tts.voice", "es_ES-davefx-medium")
+
+        # Comando para probar
+        cmd = [
+            "echo", "Hola, esta es una prueba de voz." | "piper-tts",
+            "--model", f"{MODELS_DIR}/tts/{voice}.onnx",
+            "--output", str(test_file)
+        ]
+
+        return jsonify({"success": True, "message": "Prueba iniciada"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -515,6 +871,76 @@ def _download_model(model: Dict):
         logger.error(f"Error descargando modelo: {e}")
     finally:
         download_status["downloading"] = False
+
+def _download_tts_voice(voice: Dict):
+    """Descarga una voz de Piper TTS en background."""
+    global download_status
+
+    download_status["downloading"] = True
+    download_status["model"] = voice['name']
+    download_status["type"] = "tts"
+    download_status["progress"] = 0
+    download_status["error"] = None
+
+    try:
+        tts_dir = MODELS_DIR / "tts"
+        tts_dir.mkdir(parents=True, exist_ok=True)
+
+        voice_id = f"{voice['lang']}-{voice['name']}-{voice['quality']}"
+        onnx_path = tts_dir / f"{voice_id}.onnx"
+        json_path = tts_dir / f"{voice_id}.onnx.json"
+
+        download_status["progress"] = 10
+
+        # Descargar archivo .onnx
+        logger.info(f"Descargando voz TTS: {voice['name']} ({voice['lang']})")
+
+        response = requests.get(voice['url'], stream=True, timeout=30)
+        response.raise_for_status()
+
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded = 0
+
+        download_status["progress"] = 20
+
+        with open(onnx_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0:
+                        # Progreso del 20 al 70 para el ONNX
+                        download_status["progress"] = 20 + int((downloaded / total_size) * 50)
+
+        download_status["progress"] = 75
+
+        # Descargar archivo .json
+        response_json = requests.get(voice['url_json'], stream=True, timeout=30)
+        response_json.raise_for_status()
+
+        with open(json_path, 'wb') as f:
+            for chunk in response_json.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        download_status["progress"] = 90
+
+        # Verificar que se descargaron ambos archivos
+        if not onnx_path.exists() or not json_path.exists():
+            raise Exception("No se descargaron todos los archivos")
+
+        download_status["progress"] = 100
+        logger.info(f"Voz TTS {voice['name']} descargada correctamente")
+
+    except requests.TimeoutExpired:
+        download_status["error"] = "Timeout de descarga"
+        logger.error("Timeout descargando voz TTS")
+    except Exception as e:
+        download_status["error"] = str(e)
+        logger.error(f"Error descargando voz TTS: {e}")
+    finally:
+        download_status["downloading"] = False
+        download_status["type"] = None
 
 def _service_status(service: str) -> Dict:
     """Obtener estado de un servicio."""

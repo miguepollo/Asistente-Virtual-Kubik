@@ -30,7 +30,7 @@ class Logger:
     def __init__(
         self,
         name: str = "asistente",
-        log_dir: str = "/home/orangepi/asistente/logs",
+        log_dir: str = "/home/orangepi/asistente2/logs",
         level: str = "INFO",
         console: bool = True,
         file: bool = True
@@ -144,7 +144,7 @@ class Logger:
 
 def setup_logging(
     level: str = "INFO",
-    log_dir: str = "/home/orangepi/asistente/logs"
+    log_dir: str = "/home/orangepi/asistente2/logs"
 ) -> None:
     """
     Configura el logging para toda la aplicación.

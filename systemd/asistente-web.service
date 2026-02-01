@@ -5,14 +5,14 @@ After=network.target
 
 [Service]
 Type=simple
-User=orangepi
-Group=orangepi
-WorkingDirectory=/home/orangepi/asistente
-Environment="PATH=/home/orangepi/asistente/venv/bin:/usr/local/bin:/usr/bin:/bin"
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=/path/to/asistente
+Environment="PATH=/path/to/asistente/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="FLASK_APP=src/webserver/app.py"
 Environment="FLASK_ENV=production"
-ExecStart=/home/orangepi/asistente/venv/bin/python src/webserver/app.py
+ExecStart=/path/to/asistente/venv/bin/python -m src.webserver.app
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -24,7 +24,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/home/orangepi/asistente/logs /home/orangepi/asistente/config /home/orangepi/asistente/models
+ReadWritePaths=/path/to/asistente/logs /path/to/asistente/config /path/to/asistente/models
 
 [Install]
 WantedBy=multi-user.target
