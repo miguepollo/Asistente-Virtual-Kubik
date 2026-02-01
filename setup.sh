@@ -111,7 +111,7 @@ install_rkllm_runtime() {
     # Descargar el release si no existe
     if [ ! -d "$BUILD_DIR/rknn-llm" ]; then
         log "Clonando repositorio rknn-llm..."
-        if git clone --depth 1 --branch release-$RKLLM_VERSION "$RKLLM_REPO" "$BUILD_DIR/rknn-llm" >> "$LOG_FILE" 2>&1; then
+        if git clone --depth 1 "$RKLLM_REPO" "$BUILD_DIR/rknn-llm" >> "$LOG_FILE" 2>&1; then
             success "Repositorio clonado"
         else
             warn "No se pudo clonar el repositorio. Intentando descarga directa..."
@@ -161,7 +161,7 @@ install_rkllm_runtime() {
     ln -sf "$LIB_INSTALL_DIR/librkllmrt.so" "$PROJECT_DIR/lib/librkllmrt.so"
 
     success "RKLLM Runtime instalado correctamente"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] RKLLM Runtime v$RKLLM_VERSION instalado" >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] RKLLM Runtime instalado" >> "$LOG_FILE"
 }
 
 ###############################################################################
