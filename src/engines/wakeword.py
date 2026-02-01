@@ -16,11 +16,26 @@ import json
 import numpy as np
 from queue import Queue
 import threading
+import subprocess
+import sys
+
+# Desinstalar Porcupine si está instalado (no soporta ARM Cortex-A55)
+try:
+    import pkg_resources
+    for pkg in list(pkg_resources.working_set):
+        if pkg.project_name == "pvporcupine":
+            logging.warning(f"Desinstalando {pkg.project_name} (no soportado en esta plataforma)...")
+            subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "pvporcupine"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logging.warning("Porcupine desinstalado. Se usará Vosk en su lugar.")
+            break
+except Exception:
+    pass
 
 try:
     import pvporcupine
     PORCUPINE_AVAILABLE = True
-except ImportError:
+except (ImportError, NotImplementedError):
     PORCUPINE_AVAILABLE = False
 
 try:
