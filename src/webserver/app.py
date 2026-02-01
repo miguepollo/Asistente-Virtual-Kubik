@@ -111,8 +111,16 @@ PIPER_VOICES = {
 ###############################################################################
 @app.route('/')
 def index():
-    """Dashboard principal."""
+    """Dashboard principal o setup si es primera ejecución."""
+    config_path = CONFIG_DIR / "config.json"
+    if not config_path.exists():
+        return render_template('setup.html')
     return render_template('index.html')
+
+@app.route('/setup')
+def setup():
+    """Página de configuración inicial."""
+    return render_template('setup.html')
 
 @app.route('/config')
 def config():

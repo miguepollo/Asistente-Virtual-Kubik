@@ -66,7 +66,9 @@ check_venv() {
 
 check_config() {
     if [ ! -f "$PROJECT_DIR/config/config.json" ]; then
-        warn "config.json no encontrado, usando valores por defecto"
+        warn "config.json no encontrado"
+        warn "Iniciando servidor web en modo configuración..."
+        SETUP_MODE=true
     fi
 }
 
@@ -82,12 +84,14 @@ OPCIONES:
     -v, --verbose   Modo verbose
     --no-wakeword   Inicia sin detección de wake word
     --web-only      Inicia solo el servidor web
+    --setup         Fuerza el modo configuración inicial
     --test          Modo prueba (no inicia servicios)
 
 Ejemplos:
     $0              Inicia el asistente normalmente
     $0 -d           Inicia en modo debug
     $0 --web-only   Inicia solo el servidor web
+    $0 --setup      Inicia el asistente en modo configuración
 
 EOF
 }
@@ -100,6 +104,7 @@ EOF
 DEBUG=""
 NO_WAKEWORD=false
 WEB_ONLY=false
+SETUP_MODE=false
 VERBOSE=""
 
 while [[ $# -gt 0 ]]; do
@@ -123,6 +128,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --web-only)
             WEB_ONLY=true
+            shift
+            ;;
+        --setup)
+            SETUP_MODE=true
             shift
             ;;
         --test)
@@ -155,6 +164,22 @@ echo ""
 
 if [ "$WEB_ONLY" = true ]; then
     log "Modo: Solo servidor web"
+    cd "$PROJECT_DIR"
+    source "$VENV_DIR/bin/activate"
+    exec "$PYTHON" -m src.webserver.app $DEBUG $VERBOSE
+elif [ "$SETUP_MODE" = true ]; then
+    # Obtener IP local
+    LOCAL_IP=$(hostname -I | cut -d' ' -f1)
+
+    log "Modo: Configuración inicial"
+    echo ""
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║     🔧 MODO CONFIGURACIÓN INICIAL                         ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${GREEN}→ Accede desde este equipo:${NC} http://localhost:5000"
+    echo -e "${GREEN}→ Accede desde otro dispositivo:${NC} http://${LOCAL_IP}:5000"
+    echo ""
     cd "$PROJECT_DIR"
     source "$VENV_DIR/bin/activate"
     exec "$PYTHON" -m src.webserver.app $DEBUG $VERBOSE

@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración Inicial - Asistente Virtual</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .setup-container {
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .setup-card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #00d9ff;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .logo p {
+            color: #888;
+            font-size: 1.1rem;
+        }
+
+        .setup-steps {
+            margin-bottom: 30px;
+        }
+
+        .step {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .step-number {
+            display: inline-block;
+            background: linear-gradient(135deg, #00d9ff, #00a8cc);
+            color: #1a1a2e;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 35px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .step h2 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+
+        .step p {
+            color: #aaa;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        input, select {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 14px 16px;
+            color: #e0e0e0;
+            width: 100%;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #00d9ff, #00a8cc);
+            color: #1a1a2e;
+            border: none;
+            padding: 14px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+        }
+
+        .button-row .btn {
+            flex: 1;
+        }
+
+        .progress-dots {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s;
+        }
+
+        .dot.active {
+            background: #00d9ff;
+            box-shadow: 0 0 10px #00d9ff;
+            width: 30px;
+            border-radius: 5px;
+        }
+
+        .alert {
+            background: rgba(46, 204, 113, 0.2);
+            border: 1px solid #2ecc71;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #2ecc71;
+        }
+
+        .alert.error {
+            background: rgba(231, 76, 60, 0.2);
+            border-color: #e74c3c;
+            color: #e74c3c;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+
+        .info-box {
+            background: rgba(0, 217, 255, 0.1);
+            border-left: 3px solid #00d9ff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-box p {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        .spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .spinner.active {
+            display: block;
+        }
+
+        .spinner svg {
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-card">
+            <div class="logo">
+                <h1>🤖 Asistente Virtual</h1>
+                <p>Configuración Inicial</p>
+            </div>
+
+            <div class="progress-dots">
+                <div class="dot active" data-step="1"></div>
+                <div class="dot" data-step="2"></div>
+                <div class="dot" data-step="3"></div>
+                <div class="dot" data-step="4"></div>
+            </div>
+
+            <div id="alert-box"></div>
+
+            <!-- Step 1: Welcome -->
+            <div class="step active" data-step="1">
+                <span class="step-number">1</span>
+                <h2>Bienvenido</h2>
+                <p>Este asistente te guiará través de la configuración inicial del sistema. Configuraremos los componentes básicos para que tu asistente de voz esté operativo.</p>
+                <div class="info-box">
+                    <p><strong>Sistema:</strong> Orange Pi 5 Ultra<br>
+                    <strong>Arquitectura:</strong> Offline-first con modelos locales</p>
+                </div>
+                <div class="button-row">
+                    <button class="btn" onclick="nextStep()">Comenzar →</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Language -->
+            <div class="step" data-step="2">
+                <span class="step-number">2</span>
+                <h2>Idioma y Voz</h2>
+                <p>Configura el idioma del reconocimiento de voz y la voz sintética para las respuestas.</p>
+                <div class="form-group">
+                    <label for="language">Idioma principal</label>
+                    <select id="language">
+                        <option value="es" selected>Español</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="voice">Voz del asistente</label>
+                    <select id="voice">
+                        <option value="es_ES-davefx-medium" selected>Español (España) - Dave Medium</option>
+                        <option value="es_ES-carlfm-medium">Español (España) - Carl Medium</option>
+                        <option value="es_MX-ald-medium">Español (México) - Ald Medium</option>
+                        <option value="en_US-amy-medium">English (US) - Amy Medium</option>
+                        <option value="en_US-arctic-medium">English (US) - Arctic Medium</option>
+                    </select>
+                </div>
+                <div class="button-row">
+                    <button class="btn btn-secondary" onclick="prevStep()">← Atrás</button>
+                    <button class="btn" onclick="nextStep()">Siguiente →</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Wake Word -->
+            <div class="step" data-step="3">
+                <span class="step-number">3</span>
+                <h2>Palabra de Activación</h2>
+                <p>Define cómo activarás al asistente. El sistema detectará estas palabras para empezar a escuchar.</p>
+                <div class="form-group">
+                    <label for="wakeword">Palabra de activación</label>
+                    <select id="wakeword">
+                        <option value="asistente" selected>"Asistente"</option>
+                        <option value="hola">"Hola"</option>
+                        <option value="oye">"Oye"</option>
+                    </select>
+                </div>
+                <div class="info-box">
+                    <p>Usando Vosk como motor de detección. No requiere modelos adicionales.</p>
+                </div>
+                <div class="button-row">
+                    <button class="btn btn-secondary" onclick="prevStep()">← Atrás</button>
+                    <button class="btn" onclick="nextStep()">Siguiente →</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Download Models -->
+            <div class="step" data-step="4">
+                <span class="step-number">4</span>
+                <h2>Modelos</h2>
+                <p>El asistente necesita descargar algunos modelos para funcionar. Puedes descargarlos ahora o después.</p>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="download-tts" checked>
+                    <label for="download-tts" style="margin:0">Descargar voz TTS seleccionada (~65 MB)</label>
+                </div>
+                <div id="download-progress" style="display:none; margin-top: 15px;">
+                    <div class="spinner" id="spinner">
+                        <svg viewBox="0 0 50 50">
+                            <circle cx="25" cy="25" r="20" fill="none" stroke="#00d9ff" stroke-width="4"></circle>
+                        </svg>
+                    </div>
+                    <p id="download-status" style="text-align: center; color: #888; font-size: 0.9rem;"></p>
+                </div>
+                <div class="button-row">
+                    <button class="btn btn-secondary" onclick="prevStep()">← Atrás</button>
+                    <button class="btn" onclick="finishSetup()">Finalizar Configuración</button>
+                </div>
+            </div>
+
+            <!-- Complete Step -->
+            <div class="step" data-step="complete">
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 4rem; margin-bottom: 20px;">✅</div>
+                    <h2 style="color: #2ecc71;">¡Configuración Completada!</h2>
+                    <p>El asistente está listo para usar. Reinicia la aplicación para iniciar el servicio.</p>
+                    <div class="info-box" style="text-align: left; margin-top: 20px;">
+                        <p><strong>Comandos útiles:</strong></p>
+                        <pre style="margin-top: 10px; font-size: 0.85rem;"># Iniciar el asistente
+systemctl start asistente
+
+# Habilitar inicio automático
+systemctl enable asistente
+
+# Ver logs
+journalctl -u asistente -f</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        const totalSteps = 4;
+
+        function showStep(step) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.dot').forEach(d => d.classList.remove('active'));
+
+            const stepEl = document.querySelector(`.step[data-step="${step}"]`);
+            if (stepEl) stepEl.classList.add('active');
+
+            const dotEl = document.querySelector(`.dot[data-step="${step}"]`);
+            if (dotEl) dotEl.classList.add('active');
+
+            currentStep = step;
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                showStep(currentStep + 1);
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 1) {
+                showStep(currentStep - 1);
+            }
+        }
+
+        function showAlert(message, isError = false) {
+            const alertBox = document.getElementById('alert-box');
+            alertBox.innerHTML = `<div class="alert ${isError ? 'error' : ''}">${message}</div>`;
+            setTimeout(() => {
+                alertBox.innerHTML = '';
+            }, 5000);
+        }
+
+        async function downloadTTS(voiceId) {
+            const progressDiv = document.getElementById('download-progress');
+            const spinner = document.getElementById('spinner');
+            const status = document.getElementById('download-status');
+
+            progressDiv.style.display = 'block';
+            spinner.classList.add('active');
+
+            try {
+                status.textContent = `Iniciando descarga de ${voiceId}...`;
+
+                // Start download
+                const response = await fetch('/api/tts/voices/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voice_id: voiceId })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Error al iniciar descarga');
+                }
+
+                // Poll progress
+                const pollInterval = setInterval(async () => {
+                    const statusResp = await fetch('/api/models/download/status');
+                    const statusResult = await statusResp.json();
+
+                    if (statusResult.downloading) {
+                        status.textContent = `Descargando... ${statusResult.progress || 0}%`;
+                    } else {
+                        clearInterval(pollInterval);
+                        if (statusResult.error) {
+                            throw new Error(statusResult.error);
+                        } else {
+                            status.textContent = '¡Descarga completada!';
+                            spinner.classList.remove('active');
+                            return true;
+                        }
+                    }
+                }, 500);
+
+            } catch (error) {
+                showAlert('Error descargando modelo: ' + error.message, true);
+                progressDiv.style.display = 'none';
+                return false;
+            }
+        }
+
+        async function finishSetup() {
+            const language = document.getElementById('language').value;
+            const voice = document.getElementById('voice').value;
+            const wakeword = document.getElementById('wakeword').value;
+            const downloadTTSModel = document.getElementById('download-tts').checked;
+
+            // Build config
+            const config = {
+                audio: {
+                    sample_rate: 16000,
+                    channels: 1,
+                    chunk_size: 512,
+                    output_volume: 70
+                },
+                vad: {
+                    sample_rate: 16000,
+                    aggressiveness: 3,
+                    silence_duration: 2.0
+                },
+                wake_word: {
+                    enabled: true,
+                    engine: "vosk",
+                    wake_words: [wakeword]
+                },
+                stt: {
+                    engine: "vosk",
+                    language: language
+                },
+                tts: {
+                    engine: "piper",
+                    voice: voice,
+                    speed: 1.0
+                },
+                llm: {
+                    engine: "rkllm",
+                    context_length: 2048,
+                    temperature: 0.7,
+                    max_tokens: 256
+                },
+                webserver: {
+                    enabled: true,
+                    host: "0.0.0.0",
+                    port: 5000
+                }
+            };
+
+            try {
+                // Save config
+                const saveResp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                const saveResult = await saveResp.json();
+                if (!saveResult.success) {
+                    throw new Error(saveResult.error || 'Error guardando configuración');
+                }
+
+                // Download TTS if requested
+                if (downloadTTSModel) {
+                    const downloaded = await downloadTTS(voice);
+                    if (!downloaded) {
+                        // Continue anyway, just warn
+                        showAlert('Configuración guardada. El modelo TTS no se pudo descargar, puedes hacerlo más tarde.', true);
+                    }
+                }
+
+                // Show complete step
+                document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+                document.querySelector('.step[data-step="complete"]').classList.add('active');
+                document.querySelectorAll('.dot').forEach(d => d.style.display = 'none');
+
+                showAlert('¡Configuración guardada correctamente!');
+
+            } catch (error) {
+                showAlert('Error: ' + error.message, true);
+            }
+        }
+    </script>
+</body>
+</html>

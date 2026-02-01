@@ -26,7 +26,7 @@ from engines.tts import TTSEngine
 from engines.llm import LLMEngine
 from engines.wakeword import WakeWordEngine
 from utils.logger import setup_logging, get_logger
-from utils.config_loader import get_config
+from utils.config_loader import get_config, Config
 
 ###############################################################################
 # Configuration
@@ -441,6 +441,38 @@ class Assistant:
 ###############################################################################
 # Entry Point
 ###############################################################################
+def run_setup_server():
+    """Ejecuta el servidor web en modo configuración inicial."""
+    logger.info("╔════════════════════════════════════════════════════════════╗")
+    logger.info("║     🔧 MODO CONFIGURACIÓN INICIAL                         ║")
+    logger.info("╚════════════════════════════════════════════════════════════╝")
+    logger.info(f"Accede a http://localhost:5000 o http://$(hostname -I | cut -d' ' -f1):5000")
+    logger.info("para configurar el asistente.")
+
+    try:
+        from webserver.app import app as web_app
+        # Marcar que estamos en modo setup
+        web_app.config['SETUP_MODE'] = True
+
+        web_app.run(
+            host="0.0.0.0",
+            port=5000,
+            debug=False
+        )
+    except KeyboardInterrupt:
+        logger.info("Servidor de configuración detenido.")
+    except Exception as e:
+        logger.error(f"Error iniciando servidor web: {e}")
+        logger.info("Puedes configurar manualmente creando el archivo:")
+        logger.info(f"  {CONFIG_DIR}/config.json")
+
+
+def is_first_run():
+    """Verifica si es la primera ejecución (no existe config.json)."""
+    config_path = CONFIG_DIR / "config.json"
+    return not config_path.exists()
+
+
 def main():
     """Función principal."""
     import argparse
@@ -456,7 +488,17 @@ def main():
         action="store_true",
         help="Desactivar wake word detection"
     )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Forzar inicio del servidor de configuración"
+    )
     args = parser.parse_args()
+
+    # Verificar si es primera ejecución o se forzó setup
+    if args.setup or is_first_run():
+        run_setup_server()
+        return
 
     # Crear asistente
     assistant = Assistant()
