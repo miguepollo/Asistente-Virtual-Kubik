@@ -22,13 +22,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.config_loader import get_config
 from utils.logger import setup_logging, get_logger
+from utils.security import get_or_create_secret_key
 
 logger = get_logger("webserver")
 
 app = Flask(__name__)
 CORS(app)
 
-app.config['SECRET_KEY'] = 'asistente-secret-key'
+# Usar clave secreta segura (generada o del entorno)
+app.config['SECRET_KEY'] = get_or_create_secret_key()
 app.config['JSON_AS_ASCII'] = False
 
 # Directorios
@@ -36,6 +38,13 @@ PROJECT_DIR = Path("/home/orangepi/asistente2")
 MODELS_DIR = PROJECT_DIR / "models"
 CONFIG_DIR = PROJECT_DIR / "config"
 LOGS_DIR = PROJECT_DIR / "logs"
+
+###############################################################################
+# CONSTANTES - Seguridad
+###############################################################################
+ALLOWED_LOG_FILES = ["assistant.log", "webserver.log", "error.log"]
+ALLOWED_SERVICES = ["asistente.service", "asistente-web.service", "asistente-ap.service"]
+ALLOWED_SERVICE_ACTIONS = ["start", "stop", "restart", "status", "enable", "disable"]
 
 # Estado de descargas
 download_status = {
@@ -266,22 +275,43 @@ def api_download_status():
 def api_models_delete():
     """Eliminar un modelo."""
     import shutil
+    import re
     data = request.json
-    model_name = data.get("model")
+    model_name = data.get("model", "")
 
     if not model_name:
         return jsonify({"error": "No se especificó modelo"}), 400
 
+    # Validar formato del nombre de modelo
+    MODEL_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9._-]+$')
+    if not MODEL_NAME_PATTERN.match(model_name):
+        logger.warning(f"Nombre de modelo inválido: {model_name}")
+        return jsonify({"error": "Nombre de modelo inválido"}), 400
+
+    # Verificar path traversal - resolver rutas absolutas
+    try:
+        model_dir = (MODELS_DIR / "llm" / model_name).resolve()
+        allowed_dir = (MODELS_DIR / "llm").resolve()
+
+        # Verificar que la ruta resuelta está dentro del directorio permitido
+        if not model_dir.is_relative_to(allowed_dir):
+            logger.error(f"Intento de path traversal detectado: {model_name}")
+            return jsonify({"error": "Acceso denegado"}), 403
+    except (ValueError, RuntimeError) as e:
+        logger.error(f"Error resolviendo ruta: {e}")
+        return jsonify({"error": "Acceso denegado"}), 403
+
     # Intentar eliminar como directorio (modelo RKLLM)
-    model_dir = MODELS_DIR / "llm" / model_name
     if model_dir.exists() and model_dir.is_dir():
         shutil.rmtree(model_dir)
+        logger.info(f"Modelo eliminado: {model_name}")
         return jsonify({"success": True})
 
     # Intentar eliminar como archivo .gguf
     model_file = MODELS_DIR / "llm" / f"{model_name}.gguf"
-    if model_file.exists():
+    if model_file.exists() and model_file.is_file():
         model_file.unlink()
+        logger.info(f"Modelo GGUF eliminado: {model_name}")
         return jsonify({"success": True})
 
     return jsonify({"error": "Modelo no encontrado"}), 404
@@ -292,16 +322,35 @@ def api_models_delete():
 @app.route('/api/logs')
 def api_logs():
     """Obtener logs."""
-    log_file = LOGS_DIR / "assistant.log"
+    log_name = request.args.get("file", "assistant.log")
     lines = request.args.get("lines", 100, type=int)
 
+    # Validar nombre de archivo contra whitelist
+    if log_name not in ALLOWED_LOG_FILES:
+        logger.warning(f"Intento de acceder a log no permitido: {log_name}")
+        return jsonify({"error": "Archivo de log no permitido"}), 400
+
+    # Validar rango de líneas
+    if not isinstance(lines, int) or not 1 <= lines <= 10000:
+        return jsonify({"error": "Número de líneas inválido (1-10000)"}), 400
+
+    log_file = LOGS_DIR / log_name
+
     if log_file.exists():
-        output = subprocess.run(
-            ["tail", "-n", str(lines), str(log_file)],
-            capture_output=True,
-            text=True
-        )
-        return jsonify({"logs": output.stdout})
+        try:
+            output = subprocess.run(
+                ["/usr/bin/tail", "-n", str(lines), str(log_file)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return jsonify({"logs": output.stdout})
+        except subprocess.TimeoutExpired:
+            logger.error("Timeout leyendo logs")
+            return jsonify({"error": "Timeout leyendo logs"}), 500
+        except Exception as e:
+            logger.error(f"Error leyendo logs: {e}")
+            return jsonify({"error": "Error leyendo logs"}), 500
     else:
         return jsonify({"logs": "No hay logs disponibles"})
 
@@ -311,38 +360,51 @@ def api_logs():
 @app.route('/api/assistant/start', methods=['POST'])
 def api_assistant_start():
     """Iniciar el asistente."""
-    try:
-        subprocess.run(
-            ["systemctl", "start", "asistente.service"],
-            check=True
-        )
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return _control_service("asistente.service", "start")
 
 @app.route('/api/assistant/stop', methods=['POST'])
 def api_assistant_stop():
     """Detener el asistente."""
-    try:
-        subprocess.run(
-            ["systemctl", "stop", "asistente.service"],
-            check=True
-        )
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return _control_service("asistente.service", "stop")
 
 @app.route('/api/assistant/restart', methods=['POST'])
 def api_assistant_restart():
     """Reiniciar el asistente."""
+    return _control_service("asistente.service", "restart")
+
+def _control_service(service_name: str, action: str):
+    """
+    Función auxiliar para controlar servicios con validación.
+    Solo permite servicios y acciones predefinidos.
+    """
+    # Validar servicio
+    if service_name not in ALLOWED_SERVICES:
+        logger.error(f"Intento de controlar servicio no permitido: {service_name}")
+        return jsonify({"error": "Servicio no permitido"}), 403
+
+    # Validar acción
+    if action not in ALLOWED_SERVICE_ACTIONS:
+        logger.error(f"Intento de ejecutar acción no permitida: {action}")
+        return jsonify({"error": "Acción no permitida"}), 403
+
     try:
-        subprocess.run(
-            ["systemctl", "restart", "asistente.service"],
-            check=True
+        result = subprocess.run(
+            ["/usr/bin/systemctl", action, service_name],
+            check=True,
+            capture_output=True,
+            timeout=10
         )
+        logger.info(f"Servicio {service_name} {action} ejecutado correctamente")
         return jsonify({"success": True})
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout ejecutando systemctl {action} {service_name}")
+        return jsonify({"error": "Timeout ejecutando systemctl"}), 500
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error ejecutando systemctl {action} {service_name}: {e.stderr}")
+        return jsonify({"error": f"Error ejecutando systemctl"}), 500
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error inesperado controlando servicio: {e}")
+        return jsonify({"error": "Error controlando servicio"}), 500
 
 ###############################################################################
 # API: WiFi
@@ -396,19 +458,37 @@ def api_wifi_list():
 @app.route('/api/wifi/connect', methods=['POST'])
 def api_wifi_connect():
     """Conectar a una red WiFi."""
+    import re
     try:
         data = request.json
-        ssid = data.get("ssid")
+        ssid = data.get("ssid", "").strip()
         password = data.get("password", "")
 
         if not ssid:
             return jsonify({"error": "SSID es requerido"}), 400
 
+        # Validar formato del SSID
+        SSID_PATTERN = re.compile(r'^[a-zA-Z0-9 _-]{1,32}$')
+        if not SSID_PATTERN.match(ssid):
+            logger.warning(f"Formato de SSID inválido: {ssid}")
+            return jsonify({"error": "SSID inválido"}), 400
+
+        # Validar contraseña si se proporciona
+        if password:
+            if not 8 <= len(password) <= 63:
+                logger.warning("Longitud de contraseña WiFi inválida")
+                return jsonify({"error": "Contraseña inválida (8-63 caracteres)"}), 400
+            # Verificar que solo contenga caracteres ASCII imprimibles
+            if not all(32 <= ord(c) <= 126 for c in password):
+                logger.warning("Contraseña contiene caracteres no válidos")
+                return jsonify({"error": "Contraseña contiene caracteres no válidos"}), 400
+
         # Verificar si ya existe una conexión para este SSID
         result = subprocess.run(
-            ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+            ["/usr/bin/nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=5
         )
 
         existing_conn = None
@@ -422,21 +502,26 @@ def api_wifi_connect():
         if existing_conn:
             # Actualizar conexión existente
             subprocess.run(
-                ["nmcli", "connection", "modify", ssid, "wifi-sec.psk", password],
-                capture_output=True
+                ["/usr/bin/nmcli", "connection", "modify", ssid, "wifi-sec.psk", password],
+                check=False,
+                capture_output=True,
+                timeout=10
             )
+            logger.info(f"Conexión WiFi actualizada: {ssid}")
         else:
             # Crear nueva conexión
-            cmd = ["nmcli", "device", "wifi", "connect", ssid]
+            cmd = ["/usr/bin/nmcli", "device", "wifi", "connect", ssid]
             if password:
                 cmd.extend(["password", password])
-            subprocess.run(cmd, capture_output=True, timeout=30)
+            subprocess.run(cmd, check=False, capture_output=True, timeout=30)
+            logger.info(f"Nueva conexión WiFi creada: {ssid}")
 
         return jsonify({"success": True, "ssid": ssid})
     except subprocess.TimeoutExpired:
         return jsonify({"error": "Timeout conectando"}), 500
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error conectando WiFi: {e}")
+        return jsonify({"error": "Error conectando WiFi"}), 500
 
 @app.route('/api/wifi/disconnect', methods=['POST'])
 def api_wifi_disconnect():
@@ -507,9 +592,10 @@ def api_wifi_available():
     """Verificar si WiFi está disponible."""
     try:
         result = subprocess.run(
-            ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"],
+            ["/usr/bin/nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=5
         )
 
         wifi_available = False
@@ -521,7 +607,8 @@ def api_wifi_available():
                 break
 
         return jsonify({"available": wifi_available})
-    except:
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError) as e:
+        logger.debug(f"Error checking WiFi availability: {e}")
         return jsonify({"available": False})
 
 ###############################################################################
@@ -673,7 +760,8 @@ def _get_input_devices() -> List[Dict]:
         from audio.capture import AudioCapture
         capture = AudioCapture()
         return capture.list_devices()
-    except:
+    except (ImportError, Exception) as e:
+        logger.debug(f"Error getting input devices: {e}")
         return []
 
 def _get_output_devices() -> List[Dict]:
@@ -682,7 +770,8 @@ def _get_output_devices() -> List[Dict]:
         from audio.playback import AudioPlayback
         playback = AudioPlayback()
         return playback.list_devices()
-    except:
+    except (ImportError, Exception) as e:
+        logger.debug(f"Error getting output devices: {e}")
         return []
 
 def _get_llm_models() -> List[str]:
@@ -968,7 +1057,8 @@ def _service_status(service: str) -> Dict:
         enabled = result2.stdout.strip() == "enabled"
 
         return {"active": active, "enabled": enabled}
-    except:
+    except (subprocess.CalledProcessError, FileNotFoundError, TimeoutExpired) as e:
+        logger.debug(f"Error getting service status: {e}")
         return {"active": False, "enabled": False}
 
 def _get_cpu_usage() -> float:
@@ -987,7 +1077,8 @@ def _get_cpu_usage() -> float:
                     if 'user' in part:
                         return float(part.split()[0])
         return 0.0
-    except:
+    except (subprocess.CalledProcessError, ValueError, IndexError, TimeoutExpired) as e:
+        logger.debug(f"Error getting CPU usage: {e}")
         return 0.0
 
 def _get_memory_usage() -> Dict:
@@ -1008,7 +1099,8 @@ def _get_memory_usage() -> Dict:
                 "percent": round((int(parts[2]) / int(parts[1])) * 100, 1)
             }
         return {}
-    except:
+    except (subprocess.CalledProcessError, ValueError, IndexError, TimeoutExpired) as e:
+        logger.debug(f"Error getting memory usage: {e}")
         return {}
 
 def _get_uptime() -> str:
@@ -1020,7 +1112,8 @@ def _get_uptime() -> str:
             text=True
         )
         return result.stdout.strip().replace("up ", "")
-    except:
+    except (subprocess.CalledProcessError, FileNotFoundError, TimeoutExpired) as e:
+        logger.debug(f"Error getting uptime: {e}")
         return "Desconocido"
 
 

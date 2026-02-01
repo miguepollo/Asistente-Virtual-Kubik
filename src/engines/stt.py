@@ -143,7 +143,11 @@ class STTEngine:
                 if wf.getframerate() != self.sample_rate:
                     logger.warning(f"Sample rate: {wf.getframerate()}")
 
-                rec = KaldiRecognizer(self.model, wf.getframerate())
+                try:
+                    rec = KaldiRecognizer(self.model, wf.getframerate())
+                except Exception as e:
+                    logger.error(f"Failed to create KaldiRecognizer: {e}")
+                    return {"text": None, "error": f"Recognizer initialization failed: {e}"}
 
                 result_text = ""
                 while True:

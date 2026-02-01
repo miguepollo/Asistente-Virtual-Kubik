@@ -23,6 +23,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def sanitize_tts_text(text: str) -> str:
+    """
+    Sanitiza texto para TTS eliminando caracteres potencialmente peligrosos.
+
+    Args:
+        text: Texto a sanitizar
+
+    Returns:
+        Texto sanitizado seguro para TTS
+    """
+    if not text:
+        return ""
+
+    # Limitar longitud para prevenir DoS
+    text = text[:1000]
+
+    # Eliminar caracteres de control y peligrosos
+    dangerous_chars = ['<', '>', '"', "'", '&', ';', '|', '$', '`', '\\', '\n', '\r', '\t', '\x00']
+    for char in dangerous_chars:
+        text = text.replace(char, ' ')
+
+    return text.strip()
+
+
 class CustomWakeWordGenerator:
     """Generador de wake words personalizados."""
 
@@ -97,6 +121,12 @@ class CustomWakeWordGenerator:
 
     def _synthesize_with_piper(self, text: str, output_path: str) -> bool:
         """Sintetiza audio usando Piper TTS."""
+        # Sanitizar texto para prevenir inyección
+        text = sanitize_tts_text(text)
+        if not text:
+            logger.error("[TTS] Texto vacío después de sanitización")
+            return False
+
         logger.debug(f"[TTS] Sintetizando: '{text}' -> {output_path}")
 
         # Verificar que modelo y config existen

@@ -95,7 +95,8 @@ class Config:
         try:
             decoded = base64.urlsafe_b64decode(value.encode())
             return self.cipher.decrypt(decoded).decode()
-        except Exception:
+        except (ValueError, base64.binascii.Error) as e:
+            logger.debug(f"Decryption failed, returning as-is: {e}")
             return value
 
     def _encrypt_value(self, value: str) -> str:

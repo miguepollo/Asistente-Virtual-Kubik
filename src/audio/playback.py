@@ -98,6 +98,7 @@ class AudioPlayback:
         if sample_rate is None:
             sample_rate = self.sample_rate
 
+        stream = None
         try:
             stream = self.p.open(
                 format=pyaudio.paInt16,
@@ -115,12 +116,21 @@ class AudioPlayback:
             if blocking:
                 stream.stop_stream()
                 stream.close()
+                stream = None  # Marcar como cerrado
 
             logger.debug(f"Played audio array: {len(audio_data)} samples")
 
         except Exception as e:
             logger.error(f"Error playing array: {e}")
             raise
+        finally:
+            # Cleanup si no-blocking o error
+            if stream:
+                try:
+                    stream.stop_stream()
+                    stream.close()
+                except Exception as e:
+                    logger.warning(f"Error closing stream: {e}")
 
     def stop(self) -> None:
         """Detiene la reproducción actual."""
@@ -135,20 +145,34 @@ class AudioPlayback:
 
         Args:
             level: Nivel de volumen (0-100)
+
+        Raises:
+            TypeError: Si level no es numérico
+            ValueError: Si level está fuera de rango
         """
-        level = max(0, min(100, level))  # Clamp 0-100
+        # Validar tipo
+        if not isinstance(level, (int, float)):
+            raise TypeError("Volume must be numeric")
+
+        # Clamp 0-100
+        level = max(0, min(100, int(level)))
 
         try:
-            # Usando amixer
+            # Usando amixer con ruta absoluta y timeout
             subprocess.run(
-                ['amixer', 'sset', 'Master', f'{level}%'],
+                ['/usr/bin/amixer', 'sset', 'Master', f'{level}%'],
                 check=True,
-                capture_output=True
+                capture_output=True,
+                timeout=5
             )
             logger.info(f"Volume set to {level}%")
 
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Timeout setting volume: {e}")
+            raise
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.error(f"Error setting volume: {e}")
+            raise
 
     def get_volume(self) -> int:
         """

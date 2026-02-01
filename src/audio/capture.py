@@ -95,6 +95,13 @@ class AudioCapture:
             self.stream.stop_stream()
             self.stream.close()
 
+        # Esperar a que termine el thread de captura si existe
+        # (PyAudio maneja el thread de callback internamente, pero por seguridad)
+        if self.capture_thread and self.capture_thread.is_alive():
+            self.capture_thread.join(timeout=2.0)
+            if self.capture_thread.is_alive():
+                logger.warning("Capture thread did not stop gracefully")
+
         logger.info("Audio capture stopped")
 
     def _audio_callback(self, in_data, frame_count, time_info, status):
