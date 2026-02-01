@@ -128,6 +128,22 @@ class Logger:
             debug_handler.setFormatter(logging.Formatter(self.FILE_FORMAT))
             self.logger.addHandler(debug_handler)
 
+        # Log de webserver (siempre)
+        webserver_log = self.log_dir / "webserver.log"
+        webserver_handler = RotatingFileHandler(
+            webserver_log,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding='utf-8'
+        )
+        webserver_handler.setLevel(self.level)
+        # Formato con función y línea para mejor debug
+        webserver_handler.setFormatter(logging.Formatter(
+            "%(asctime)s - %(levelname)-8s - %(name)-25s - [%(funcName)s:%(lineno)d] - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
+        self.logger.addHandler(webserver_handler)
+
     @staticmethod
     def get(name: str) -> logging.Logger:
         """

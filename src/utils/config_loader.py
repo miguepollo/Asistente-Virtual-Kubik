@@ -141,7 +141,12 @@ class Config:
                 "engine": "rkllm",
                 "context_length": 2048,
                 "temperature": 0.7,
-                "max_tokens": 256
+                "max_tokens": 256,
+                "auto_download_startup": False,  # Descargar modelos al inicio
+                "preferred_models": [            # Modelos preferidos
+                    "qwen2-1.5b-rkllm",
+                    "smolvlm2-500m-rk3588"
+                ]
             },
             "context": {
                 "timeout_seconds": 60,
@@ -150,7 +155,10 @@ class Config:
             "webserver": {
                 "enabled": True,
                 "host": "0.0.0.0",
-                "port": 5000
+                "port": 5000,
+                "debug": False,
+                "log_level": "DEBUG",            # DEBUG por defecto
+                "request_logging": True           # Loggear requests
             },
             "logging": {
                 "level": "INFO"

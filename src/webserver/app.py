@@ -10,11 +10,12 @@ import logging
 import subprocess
 import threading
 import time
+import uuid
 import requests
 from pathlib import Path
 from typing import Dict, List
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, g
 from flask_cors import CORS
 
 # Añadir src al path
@@ -118,6 +119,47 @@ PIPER_VOICES = {
 ###############################################################################
 # Rutas Principales
 ###############################################################################
+
+# ==================== MIDDLEWARE DE LOGGING ====================
+@app.before_request
+def before_request():
+    """Log antes de cada request."""
+    g.start_time = time.time()
+    g.request_id = str(uuid.uuid4())[:8]
+
+    config = get_config()
+    # Siempre loggear en modo DEBUG
+    if config.get("webserver.log_level", "DEBUG") == "DEBUG":
+        logger.debug(f"[{g.request_id}] {request.method} {request.path} from {request.remote_addr}")
+        # Loggear query params si existen
+        if request.query_string:
+            logger.debug(f"[{g.request_id}] Query: {request.query_string.decode('utf-8')}")
+
+@app.after_request
+def after_request(response):
+    """Log después de cada request."""
+    if hasattr(g, 'start_time'):
+        duration = (time.time() - g.start_time) * 1000  # ms
+
+        config = get_config()
+        log_level = config.get("webserver.log_level", "DEBUG")
+
+        # Siempre loggear respuestas en DEBUG
+        if log_level == "DEBUG":
+            logger.info(
+                f"[{g.request_id}] {request.method} {request.path} "
+                f"→ {response.status_code} ({duration:.0f}ms)"
+            )
+
+        # Log warning para respuestas lentas
+        if duration > 1000:
+            logger.warning(f"[{g.request_id}] ⚠️ Respuesta lenta: {duration:.0f}ms")
+        elif duration > 500:
+            logger.debug(f"[{g.request_id}] Respuesta algo lenta: {duration:.0f}ms")
+
+    return response
+
+# ==================== RUTAS ====================
 @app.route('/')
 def index():
     """Dashboard principal o setup si es primera ejecución."""
@@ -799,6 +841,7 @@ def _get_llm_models() -> List[str]:
 def _get_available_models() -> List[Dict]:
     """Obtener modelos disponibles para descargar (formato RKLLM para NPU)."""
     return [
+        # === MODELOS RECOMENDADOS - Qwen2 (FydeOS) ===
         {
             "name": "qwen2-1.5b-rkllm",
             "url": "https://huggingface.co/FydeOS/Qwen2-1_5B_rkLLM",
@@ -808,10 +851,48 @@ def _get_available_models() -> List[Dict]:
             "format": "rkllm"
         },
         {
+            "name": "qwen-chat-1.8b-rkllm",
+            "url": "https://huggingface.co/FydeOS/Qwen-1_8B-Chat_rkLLM",
+            "size_mb": 1400,
+            "recommended": True,
+            "description": "Qwen Chat 1.8B - Conversacional optimizado",
+            "format": "rkllm"
+        },
+        # === MODELOS VLM (Vision-Language) NUEVOS ===
+        {
+            "name": "smolvlm2-256m-rk3588",
+            "url": "https://huggingface.co/Qengineering/SmolVLM2-256m-rk3588",
+            "size_mb": 250,
+            "recommended": True,
+            "description": "SmolVLM2 256M - VLM ultra ligero con visión",
+            "format": "rkllm",
+            "capabilities": ["text", "vision"]
+        },
+        {
+            "name": "smolvlm2-500m-rk3588",
+            "url": "https://huggingface.co/Qengineering/smolvlm2-500m-rk3588",
+            "size_mb": 500,
+            "recommended": True,
+            "description": "SmolVLM2 500M - VLM con visión",
+            "format": "rkllm",
+            "capabilities": ["text", "vision"]
+        },
+        {
+            "name": "qwen2-vl-7b-rkllm",
+            "url": "https://huggingface.co/3ib0n/Qwen2-VL-7B-rkllm",
+            "size_mb": 4000,
+            "recommended": False,
+            "description": "Qwen2-VL 7B - VLM alta capacidad (requiere driver 0.9.7+)",
+            "format": "rkllm",
+            "capabilities": ["text", "vision"],
+            "requires_driver": "0.9.7"
+        },
+        # === MODELOS LIGEROS ===
+        {
             "name": "qwen1.5-0.5b-rkllm",
             "url": "https://huggingface.co/FydeOS/Qwen1.5-0.5B_rkLLM",
             "size_mb": 400,
-            "recommended": True,
+            "recommended": False,
             "description": "Qwen1.5 0.5B - Ultra ligero, rápido",
             "format": "rkllm"
         },
@@ -823,33 +904,18 @@ def _get_available_models() -> List[Dict]:
             "description": "Qwen1.5 1.8B - Buen balance calidad/velocidad",
             "format": "rkllm"
         },
-        {
-            "name": "qwen-chat-1.8b-rkllm",
-            "url": "https://huggingface.co/jxke/qwen-chat-1_8B_rkllm",
-            "size_mb": 1400,
-            "recommended": False,
-            "description": "Qwen Chat 1.8B - Conversacional",
-            "format": "rkllm"
-        },
+        # === MODELOS PELLOCHUS ===
         {
             "name": "phi-2-rk3588",
-            "url": "https://huggingface.co/Pelochus/ezrkllm-collection",
+            "url": "https://huggingface.co/Pelochus/phi-2-rk3588",
             "size_mb": 1100,
             "recommended": False,
             "description": "Phi-2 - Modelo compacto de Microsoft",
             "format": "rkllm"
         },
         {
-            "name": "phi-3-mini-rk3588",
-            "url": "https://huggingface.co/Pelochus/ezrkllm-collection",
-            "size_mb": 1300,
-            "recommended": False,
-            "description": "Phi-3 Mini - Versión mejorada de Phi",
-            "format": "rkllm"
-        },
-        {
             "name": "gemma-2b-rk3588",
-            "url": "https://huggingface.co/Pelochus/ezrkllm-collection",
+            "url": "https://huggingface.co/Pelochus/gemma-2b-rk3588",
             "size_mb": 900,
             "recommended": False,
             "description": "Gemma 2B - Modelo compacto de Google",
@@ -857,12 +923,13 @@ def _get_available_models() -> List[Dict]:
         },
         {
             "name": "tinyllama-v1-rk3588",
-            "url": "https://huggingface.co/Pelochus/ezrkllm-collection",
+            "url": "https://huggingface.co/Pelochus/tinyllama-v1-rk3588",
             "size_mb": 700,
             "recommended": False,
             "description": "TinyLlama v1 - Muy ligero",
             "format": "rkllm"
         },
+        # === MODELOS GRANDES ===
         {
             "name": "qwen1.5-4b-rkllm",
             "url": "https://huggingface.co/Pelochus/qwen1.5-chat-4B-rk3588",
@@ -889,6 +956,7 @@ def _download_model(model: Dict):
     download_status["model"] = model["name"]
     download_status["progress"] = 0
     download_status["error"] = None
+    download_status["type"] = "llm"
 
     try:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -897,20 +965,20 @@ def _download_model(model: Dict):
         # Crear directorio si no existe
         model_path.mkdir(parents=True, exist_ok=True)
 
-        download_status["progress"] = 10
+        logger.info(f"[DOWNLOAD] Iniciando descarga: {model['name']}")
+        logger.info(f"[DOWNLOAD] URL: {model['url']}")
+        logger.info(f"[DOWNLOAD] Tamaño estimado: {model['size_mb']} MB")
 
-        # Usar git clone con huggingface-hub
-        import subprocess
+        download_status["progress"] = 5
 
-        # Primero intentar con huggingface-cli
+        # Usar huggingface-cli primero
         cmd = [
             "huggingface-cli", "download",
             model["url"],
             "--local-dir", str(model_path),
-            "--local-dir-use-symlinks", "False"
+            "--local-dir-use-symlinks", "False",
+            "--quiet"  # Modo silencioso para mejor logging nuestro
         ]
-
-        logger.info(f"Descargando modelo: {model['name']}")
 
         process = subprocess.Popen(
             cmd,
@@ -919,17 +987,22 @@ def _download_model(model: Dict):
             text=True
         )
 
-        download_status["progress"] = 20
+        download_status["progress"] = 10
+
+        # Simular progreso durante la descarga (huggingface-cli no da progreso)
+        progress_sim = threading.Thread(target=_simulate_progress, args=(model["size_mb"],))
+        progress_sim.daemon = True
+        progress_sim.start()
 
         # Esperar a que termine
         stdout, stderr = process.communicate(timeout=600)  # 10 min timeout
 
         if process.returncode != 0:
-            # Si huggingface-cli falla, intentar con git
-            logger.warning("huggingface-cli falló, intentando con git...")
-            download_status["progress"] = 30
+            logger.warning(f"[DOWNLOAD] huggingface-cli falló: {stderr[:200]}")
+            download_status["progress"] = 50
 
-            # Extraer repo name de la URL
+            # Intentar con git
+            logger.info("[DOWNLOAD] Intentando con git clone...")
             repo = model["url"].replace("https://huggingface.co/", "")
 
             git_cmd = [
@@ -948,9 +1021,9 @@ def _download_model(model: Dict):
             process2.communicate(timeout=600)
 
             if process2.returncode != 0:
-                raise Exception("Error descargando con git")
+                raise Exception(f"Git falló: {process2.stderr}")
 
-        download_status["progress"] = 90
+        download_status["progress"] = 95
 
         # Verificar que se descargó algo
         files = list(model_path.rglob("*"))
@@ -958,16 +1031,34 @@ def _download_model(model: Dict):
             raise Exception("No se descargaron archivos del modelo")
 
         download_status["progress"] = 100
-        logger.info(f"Modelo {model['name']} descargado: {len(files)} archivos")
+        logger.info(f"[DOWNLOAD] ✓ {model['name']} descargado: {len(files)} archivos")
 
     except subprocess.TimeoutExpired:
-        download_status["error"] = "Timeout de descarga"
-        logger.error("Timeout descargando modelo")
+        download_status["error"] = "Timeout de descarga (más de 10 minutos)"
+        logger.error("[DOWNLOAD] Timeout")
     except Exception as e:
         download_status["error"] = str(e)
-        logger.error(f"Error descargando modelo: {e}")
+        logger.error(f"[DOWNLOAD] Error: {e}", exc_info=True)
     finally:
         download_status["downloading"] = False
+
+
+def _simulate_progress(size_mb: int):
+    """Simula progreso durante la descarga (huggingface-cli no reporta progreso)."""
+    global download_status
+    # Estimar tiempo basado en tamaño (asumiendo ~5 MB/s promedio)
+    estimated_seconds = max(10, size_mb / 5)  # Mínimo 10 segundos
+    steps = 20
+    sleep_time = estimated_seconds / steps
+
+    for i in range(1, steps):
+        if not download_status["downloading"]:
+            break
+        # Progreso del 10% al 80%
+        progress = 10 + int((i / steps) * 70)
+        if progress > download_status["progress"]:
+            download_status["progress"] = progress
+        time.sleep(sleep_time)
 
 def _download_tts_voice(voice: Dict):
     """Descarga una voz de Piper TTS en background."""
@@ -1122,11 +1213,26 @@ def _get_uptime() -> str:
 ###############################################################################
 @app.errorhandler(404)
 def not_found(e):
-    return jsonify({"error": "No encontrado"}), 404
+    request_id = getattr(g, 'request_id', '????????')
+    logger.debug(f"[{request_id}] 404 - {request.method} {request.path}")
+    return jsonify({"error": "No encontrado", "request_id": request_id}), 404
 
 @app.errorhandler(500)
 def server_error(e):
-    return jsonify({"error": "Error del servidor"}), 500
+    import traceback
+    request_id = getattr(g, 'request_id', '????????')
+    logger.error(f"[{request_id}] 💥 500 Error en {request.method} {request.path}: {e}")
+    logger.error(f"[{request_id}] Stack trace:\n{traceback.format_exc()}")
+    return jsonify({"error": "Error del servidor", "request_id": request_id}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Manejador de errores con logging detallado."""
+    import traceback
+    request_id = getattr(g, 'request_id', '????????')
+    logger.error(f"[{request_id}] 💥 Exception en {request.method} {request.path}: {e}")
+    logger.error(f"[{request_id}] Stack trace:\n{traceback.format_exc()}")
+    return jsonify({"error": str(e), "request_id": request_id}), 500
 
 
 ###############################################################################
@@ -1135,13 +1241,38 @@ def server_error(e):
 if __name__ == '__main__':
     # Setup logging
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    setup_logging(level="INFO", log_dir=str(LOGS_DIR))
 
-    logger.info("Iniciando servidor web...")
+    # Obtener configuración
+    config = get_config()
+    log_level = config.get("webserver.log_level", "DEBUG")  # DEBUG por defecto
+    debug_mode = config.get("webserver.debug", False)
 
-    # Iniciar servidor
+    # Configurar nivel de logging
+    setup_logging(level=log_level, log_dir=str(LOGS_DIR))
+
+    logger.info("")
+    logger.info("╔════════════════════════════════════════════════════════════╗")
+    logger.info("║     🚀 WEBSERVER DEL ASISTENTE - Iniciando                  ║")
+    logger.info("╚════════════════════════════════════════════════════════════╝")
+    logger.info(f"  Nivel de log: {log_level}")
+    logger.info(f"  Modo debug: {debug_mode}")
+    logger.info(f"  Host: {config.get('webserver.host', '0.0.0.0')}")
+    logger.info(f"  Port: {config.get('webserver.port', 5000)}")
+    logger.info("")
+
+    # Mostrar modelos instalados
+    installed = _get_llm_models()
+    logger.info(f"  📦 Modelos LLM instalados: {len(installed)}")
+    for model in installed:
+        logger.info(f"     - {model}")
+    logger.info("")
+
+    # Configuración optimizada de Flask
+    logger.info("🌐 Iniciando servidor Flask...")
     app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=False
+        host=config.get('webserver.host', '0.0.0.0'),
+        port=config.get('webserver.port', 5000),
+        debug=debug_mode,
+        threaded=True,           # Manejar múltiples conexiones
+        use_reloader=False       # Evitar problemas en producción
     )
