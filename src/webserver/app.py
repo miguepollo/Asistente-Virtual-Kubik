@@ -152,7 +152,7 @@ def after_request(response):
 @app.route('/')
 def index():
     """Dashboard principal o setup si es primera ejecución."""
-    config_path = CONFIG_DIR / "config.json"
+    config_path = PROJECT_DIR / "config.json"
     if not config_path.exists():
         return render_template('setup.html')
     return render_template('index.html')

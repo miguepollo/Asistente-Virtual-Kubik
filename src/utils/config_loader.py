@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 
 # Import paths configuration
 try:
-    from utils.paths import CONFIG_DIR
+    from utils.paths import CONFIG_DIR, PROJECT_DIR
 except ImportError:
     # Fallback for when paths module is not available
     CONFIG_DIR = Path("/home/orangepi/asistente2/config")
+    PROJECT_DIR = Path("/home/orangepi/asistente2")
 
 
 class Config:
@@ -35,9 +36,10 @@ class Config:
             api_keys_path: Ruta al archivo de API keys (default: CONFIG_DIR/api_keys.json)
             encryption_key: Clave para encriptar/desencriptar (None=sin encriptación)
         """
-        # Use CONFIG_DIR from paths module if paths not specified
+        # Use paths from paths module if paths not specified
+        # config.json should be in PROJECT_DIR root (not in CONFIG_DIR subdirectory)
         if config_path is None:
-            config_path = CONFIG_DIR / "config.json"
+            config_path = PROJECT_DIR / "config.json"
         if api_keys_path is None:
             api_keys_path = CONFIG_DIR / "api_keys.json"
 

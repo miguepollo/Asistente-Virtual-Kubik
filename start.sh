@@ -65,8 +65,9 @@ check_venv() {
 }
 
 check_config() {
-    if [ ! -f "$PROJECT_DIR/config/config.json" ]; then
-        warn "config.json no encontrado"
+    # Verificar si existe config.json en la raíz del proyecto
+    if [ ! -f "$PROJECT_DIR/config.json" ]; then
+        warn "config.json no encontrado en la raíz del proyecto"
         warn "Iniciando servidor web en modo configuración..."
         SETUP_MODE=true
     fi
