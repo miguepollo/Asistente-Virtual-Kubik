@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.config_loader import get_config
 from utils.logger import setup_logging, get_logger
 from utils.security import get_or_create_secret_key
+from utils.paths import PROJECT_DIR, MODELS_DIR, CONFIG_DIR, LOGS_DIR
 
 logger = get_logger("webserver")
 
@@ -34,11 +35,8 @@ CORS(app)
 app.config['SECRET_KEY'] = get_or_create_secret_key()
 app.config['JSON_AS_ASCII'] = False
 
-# Directorios
-PROJECT_DIR = Path("/home/orangepi/asistente2")
-MODELS_DIR = PROJECT_DIR / "models"
-CONFIG_DIR = PROJECT_DIR / "config"
-LOGS_DIR = PROJECT_DIR / "logs"
+# Importar thread-safe state management
+from webserver.state import get_download_status
 
 ###############################################################################
 # CONSTANTES - Seguridad
@@ -46,15 +44,6 @@ LOGS_DIR = PROJECT_DIR / "logs"
 ALLOWED_LOG_FILES = ["assistant.log", "webserver.log", "error.log"]
 ALLOWED_SERVICES = ["asistente.service", "asistente-web.service", "asistente-ap.service"]
 ALLOWED_SERVICE_ACTIONS = ["start", "stop", "restart", "status", "enable", "disable"]
-
-# Estado de descargas
-download_status = {
-    "downloading": False,
-    "model": None,
-    "progress": 0,
-    "error": None,
-    "type": None  # "llm" o "tts"
-}
 
 ###############################################################################
 # CONSTANTES - Voces de Piper TTS
@@ -281,9 +270,9 @@ def api_models_llm():
 @app.route('/api/models/download', methods=['POST'])
 def api_models_download():
     """Iniciar descarga de modelo."""
-    global download_status
+    dl_status = get_download_status()
 
-    if download_status["downloading"]:
+    if dl_status.downloading:
         return jsonify({"error": "Ya hay una descarga en curso"}), 400
 
     data = request.json
@@ -311,7 +300,7 @@ def api_models_download():
 @app.route('/api/models/download/status')
 def api_download_status():
     """Estado de descarga."""
-    return jsonify(download_status)
+    return jsonify(get_download_status().get_snapshot())
 
 @app.route('/api/models/delete', methods=['POST'])
 def api_models_delete():
@@ -706,9 +695,9 @@ def api_tts_voices():
 @app.route('/api/tts/voices/download', methods=['POST'])
 def api_tts_download_voice():
     """Descargar una voz de Piper TTS."""
-    global download_status
+    dl_status = get_download_status()
 
-    if download_status["downloading"]:
+    if dl_status.downloading:
         return jsonify({"error": "Ya hay una descarga en curso"}), 400
 
     try:
@@ -769,9 +758,8 @@ def api_tts_set_voice():
 def api_tts_test():
     """Probar la voz de TTS actual."""
     try:
-        # Ejecutar prueba de TTS
-        import subprocess
-        result = subprocess.run(
+        # Verificar que piper-tts está disponible
+        subprocess.run(
             ["piper-tts", "--help"],
             capture_output=True,
             timeout=5
@@ -782,14 +770,30 @@ def api_tts_test():
         config = get_config()
         voice = config.get("tts.voice", "es_ES-davefx-medium")
 
-        # Comando para probar
-        cmd = [
-            "echo", "Hola, esta es una prueba de voz." | "piper-tts",
-            "--model", f"{MODELS_DIR}/tts/{voice}.onnx",
-            "--output", str(test_file)
-        ]
+        # Crear pipe entre echo y piper-tts correctamente
+        echo_proc = subprocess.Popen(
+            ["echo", "Hola, esta es una prueba de voz."],
+            stdout=subprocess.PIPE
+        )
+        piper_proc = subprocess.Popen(
+            ["piper-tts",
+             "--model", f"{MODELS_DIR}/tts/{voice}.onnx",
+             "--output", str(test_file)],
+            stdin=echo_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        echo_proc.stdout.close()
+        stdout, stderr = piper_proc.communicate(timeout=30)
 
-        return jsonify({"success": True, "message": "Prueba iniciada"})
+        if piper_proc.returncode != 0:
+            return jsonify({"error": f"Error en piper-tts: {stderr.decode('utf-8', errors='ignore')}"}), 500
+
+        return jsonify({"success": True, "message": "Prueba completada", "output_file": str(test_file)})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Timeout ejecutando prueba de TTS"}), 500
+    except FileNotFoundError:
+        return jsonify({"error": "piper-tts no encontrado"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -950,13 +954,15 @@ def _get_available_models() -> List[Dict]:
 
 def _download_model(model: Dict):
     """Descarga un modelo en background usando git/huggingface-cli."""
-    global download_status
+    dl_status = get_download_status()
 
-    download_status["downloading"] = True
-    download_status["model"] = model["name"]
-    download_status["progress"] = 0
-    download_status["error"] = None
-    download_status["type"] = "llm"
+    dl_status.update(
+        downloading=True,
+        model=model["name"],
+        progress=0,
+        error=None,
+        type="llm"
+    )
 
     try:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -969,7 +975,7 @@ def _download_model(model: Dict):
         logger.info(f"[DOWNLOAD] URL: {model['url']}")
         logger.info(f"[DOWNLOAD] Tamaño estimado: {model['size_mb']} MB")
 
-        download_status["progress"] = 5
+        dl_status.update(progress=5)
 
         # Usar huggingface-cli primero
         cmd = [
@@ -987,7 +993,7 @@ def _download_model(model: Dict):
             text=True
         )
 
-        download_status["progress"] = 10
+        dl_status.update(progress=10)
 
         # Simular progreso durante la descarga (huggingface-cli no da progreso)
         progress_sim = threading.Thread(target=_simulate_progress, args=(model["size_mb"],))
@@ -999,7 +1005,7 @@ def _download_model(model: Dict):
 
         if process.returncode != 0:
             logger.warning(f"[DOWNLOAD] huggingface-cli falló: {stderr[:200]}")
-            download_status["progress"] = 50
+            dl_status.update(progress=50)
 
             # Intentar con git
             logger.info("[DOWNLOAD] Intentando con git clone...")
@@ -1023,52 +1029,54 @@ def _download_model(model: Dict):
             if process2.returncode != 0:
                 raise Exception(f"Git falló: {process2.stderr}")
 
-        download_status["progress"] = 95
+        dl_status.update(progress=95)
 
         # Verificar que se descargó algo
         files = list(model_path.rglob("*"))
         if not files or len(files) < 3:
             raise Exception("No se descargaron archivos del modelo")
 
-        download_status["progress"] = 100
+        dl_status.update(progress=100)
         logger.info(f"[DOWNLOAD] ✓ {model['name']} descargado: {len(files)} archivos")
 
     except subprocess.TimeoutExpired:
-        download_status["error"] = "Timeout de descarga (más de 10 minutos)"
+        dl_status.update(error="Timeout de descarga (más de 10 minutos)")
         logger.error("[DOWNLOAD] Timeout")
     except Exception as e:
-        download_status["error"] = str(e)
+        dl_status.update(error=str(e))
         logger.error(f"[DOWNLOAD] Error: {e}", exc_info=True)
     finally:
-        download_status["downloading"] = False
+        dl_status.update(downloading=False)
 
 
 def _simulate_progress(size_mb: int):
     """Simula progreso durante la descarga (huggingface-cli no reporta progreso)."""
-    global download_status
+    dl_status = get_download_status()
     # Estimar tiempo basado en tamaño (asumiendo ~5 MB/s promedio)
     estimated_seconds = max(10, size_mb / 5)  # Mínimo 10 segundos
     steps = 20
     sleep_time = estimated_seconds / steps
 
     for i in range(1, steps):
-        if not download_status["downloading"]:
+        if not dl_status.downloading:
             break
         # Progreso del 10% al 80%
         progress = 10 + int((i / steps) * 70)
-        if progress > download_status["progress"]:
-            download_status["progress"] = progress
+        if progress > dl_status.progress:
+            dl_status.update(progress=progress)
         time.sleep(sleep_time)
 
 def _download_tts_voice(voice: Dict):
     """Descarga una voz de Piper TTS en background."""
-    global download_status
+    dl_status = get_download_status()
 
-    download_status["downloading"] = True
-    download_status["model"] = voice['name']
-    download_status["type"] = "tts"
-    download_status["progress"] = 0
-    download_status["error"] = None
+    dl_status.update(
+        downloading=True,
+        model=voice['name'],
+        type="tts",
+        progress=0,
+        error=None
+    )
 
     try:
         tts_dir = MODELS_DIR / "tts"
@@ -1078,7 +1086,7 @@ def _download_tts_voice(voice: Dict):
         onnx_path = tts_dir / f"{voice_id}.onnx"
         json_path = tts_dir / f"{voice_id}.onnx.json"
 
-        download_status["progress"] = 10
+        dl_status.update(progress=10)
 
         # Descargar archivo .onnx
         logger.info(f"Descargando voz TTS: {voice['name']} ({voice['lang']})")
@@ -1089,7 +1097,7 @@ def _download_tts_voice(voice: Dict):
         total_size = int(response.headers.get('content-length', 0))
         downloaded = 0
 
-        download_status["progress"] = 20
+        dl_status.update(progress=20)
 
         with open(onnx_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
@@ -1098,9 +1106,9 @@ def _download_tts_voice(voice: Dict):
                     downloaded += len(chunk)
                     if total_size > 0:
                         # Progreso del 20 al 70 para el ONNX
-                        download_status["progress"] = 20 + int((downloaded / total_size) * 50)
+                        dl_status.update(progress=20 + int((downloaded / total_size) * 50))
 
-        download_status["progress"] = 75
+        dl_status.update(progress=75)
 
         # Descargar archivo .json
         response_json = requests.get(voice['url_json'], stream=True, timeout=30)
@@ -1111,24 +1119,23 @@ def _download_tts_voice(voice: Dict):
                 if chunk:
                     f.write(chunk)
 
-        download_status["progress"] = 90
+        dl_status.update(progress=90)
 
         # Verificar que se descargaron ambos archivos
         if not onnx_path.exists() or not json_path.exists():
             raise Exception("No se descargaron todos los archivos")
 
-        download_status["progress"] = 100
+        dl_status.update(progress=100)
         logger.info(f"Voz TTS {voice['name']} descargada correctamente")
 
     except requests.TimeoutExpired:
-        download_status["error"] = "Timeout de descarga"
+        dl_status.update(error="Timeout de descarga")
         logger.error("Timeout descargando voz TTS")
     except Exception as e:
-        download_status["error"] = str(e)
+        dl_status.update(error=str(e))
         logger.error(f"Error descargando voz TTS: {e}")
     finally:
-        download_status["downloading"] = False
-        download_status["type"] = None
+        dl_status.update(downloading=False, type=None)
 
 def _service_status(service: str) -> Dict:
     """Obtener estado de un servicio."""

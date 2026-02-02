@@ -9,6 +9,13 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Import paths configuration
+try:
+    from utils.paths import CONFIG_DIR
+except ImportError:
+    # Fallback for when paths module is not available
+    CONFIG_DIR = Path("/home/orangepi/asistente2/config")
+
 
 def get_or_create_secret_key(key_dir: Path = None) -> str:
     """
@@ -20,7 +27,7 @@ def get_or_create_secret_key(key_dir: Path = None) -> str:
     3. Generar nueva clave y guardarla
 
     Args:
-        key_dir: Directorio donde guardar/buscar la clave (default: /home/orangepi/asistente2/config)
+        key_dir: Directorio donde guardar/buscar la clave (default: CONFIG_DIR from paths module)
 
     Returns:
         Clave secreta hexadecimal de 64 caracteres (32 bytes)
@@ -37,9 +44,9 @@ def get_or_create_secret_key(key_dir: Path = None) -> str:
         logger.info("Usando SECRET_KEY del entorno")
         return env_key
 
-    # Directorio por defecto
+    # Directorio por defecto - usar CONFIG_DIR del módulo paths
     if key_dir is None:
-        key_dir = Path("/home/orangepi/asistente2/config")
+        key_dir = CONFIG_DIR
 
     key_file = key_dir / ".secret_key"
 

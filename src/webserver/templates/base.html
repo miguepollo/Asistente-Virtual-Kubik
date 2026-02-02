@@ -289,6 +289,10 @@
         // Funciones comunes
         async function apiGet(url) {
             const response = await fetch(url);
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ error: response.statusText }));
+                throw new Error(error.error || `Error ${response.status}: ${response.statusText}`);
+            }
             return await response.json();
         }
 
@@ -298,6 +302,10 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ error: response.statusText }));
+                throw new Error(error.error || `Error ${response.status}: ${response.statusText}`);
+            }
             return await response.json();
         }
 

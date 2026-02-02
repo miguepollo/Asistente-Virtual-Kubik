@@ -188,31 +188,39 @@ function showTab(tabName) {
 
 // =================== LLM ===================
 async function loadModels() {
-    const data = await apiGet('/api/models/llm');
+    try {
+        const data = await apiGet('/api/models/llm');
 
-    // Cargar modelos disponibles en el select
-    const select = document.getElementById('modelSelect');
-    select.innerHTML = '<option value="">-- Seleccionar --</option>';
+        // Cargar modelos disponibles en el select
+        const select = document.getElementById('modelSelect');
+        select.innerHTML = '<option value="">-- Seleccionar --</option>';
 
-    data.available.forEach(model => {
-        const option = document.createElement('option');
-        option.value = model.name;
-        option.textContent = model.name + (model.recommended ? ' ⭐ (Recomendado)' : '');
-        select.appendChild(option);
-    });
+        data.available.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name + (model.recommended ? ' ⭐ (Recomendado)' : '');
+            select.appendChild(option);
+        });
 
-    // Mostrar modelos disponibles
-    const grid = document.getElementById('availableModels');
-    grid.innerHTML = data.available.map(model => `
-        <div class="model-card" onclick="selectModelFromCard('${model.name}')" style="cursor: pointer;">
-            <h3>${model.name}${model.recommended ? '<span class="badge">⭐ Recomendado</span>' : ''}</h3>
-            <p class="size">📦 ${formatSize(model.size_mb)}</p>
-            <p style="color: #888; margin-top: 10px;">${model.description}</p>
-        </div>
-    `).join('');
+        // Mostrar modelos disponibles
+        const grid = document.getElementById('availableModels');
+        grid.innerHTML = data.available.map(model => `
+            <div class="model-card" onclick="selectModelFromCard('${model.name}')" style="cursor: pointer;">
+                <h3>${model.name}${model.recommended ? '<span class="badge">⭐ Recomendado</span>' : ''}</h3>
+                <p class="size">📦 ${formatSize(model.size_mb)}</p>
+                <p style="color: #888; margin-top: 10px;">${model.description}</p>
+            </div>
+        `).join('');
 
-    // Mostrar modelos instalados
-    updateInstalledModels(data.installed);
+        // Mostrar modelos instalados
+        updateInstalledModels(data.installed);
+    } catch (error) {
+        console.error('Error cargando modelos:', error);
+        document.getElementById('availableModels').innerHTML =
+            '<p style="color: #ff6b6b;">❌ Error cargando modelos: ' + error.message + '</p>';
+        document.getElementById('installedModels').innerHTML =
+            '<p style="color: #ff6b6b;">❌ Error cargando modelos instalados</p>';
+    }
 }
 
 function updateInstalledModels(installed) {
@@ -317,21 +325,26 @@ async function deleteModel(name) {
 
 // =================== TTS ===================
 async function loadTTSVoices() {
-    const data = await apiGet('/api/tts/voices');
+    try {
+        const data = await apiGet('/api/tts/voices');
 
-    // Mostrar voz actual
-    const currentDisplay = document.getElementById('currentVoiceDisplay');
-    if (data.current) {
-        const parts = data.current.split('-');
-        if (parts.length >= 2) {
-            currentDisplay.innerHTML = `<strong>${data.current}</strong><br><small>${parts[0]} - ${parts[1]}</small>`;
-        } else {
-            currentDisplay.textContent = data.current;
+        // Mostrar voz actual
+        const currentDisplay = document.getElementById('currentVoiceDisplay');
+        if (data.current) {
+            const parts = data.current.split('-');
+            if (parts.length >= 2) {
+                currentDisplay.innerHTML = `<strong>${data.current}</strong><br><small>${parts[0]} - ${parts[1]}</small>`;
+            } else {
+                currentDisplay.textContent = data.current;
+            }
         }
-    }
 
-    // Mostrar voces del idioma seleccionado
-    showVoiceLang(selectedVoiceLang, data);
+        // Mostrar voces del idioma seleccionado
+        showVoiceLang(selectedVoiceLang, data);
+    } catch (error) {
+        console.error('Error cargando voces TTS:', error);
+        document.getElementById('currentVoiceDisplay').textContent = 'Error al cargar';
+    }
 }
 
 function showVoiceLang(lang, cachedData = null) {
@@ -414,31 +427,37 @@ async function setVoice(voiceId) {
 
 // =================== Network / WiFi ===================
 async function loadNetworkStatus() {
-    const status = await apiGet('/api/wifi/status');
-    const container = document.getElementById('networkStatus');
+    try {
+        const status = await apiGet('/api/wifi/status');
+        const container = document.getElementById('networkStatus');
 
-    if (status.connected) {
-        container.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <div style="font-size: 3rem;">📶</div>
-                <div>
-                    <h3 style="color: #00ff88;">✓ Conectado</h3>
-                    ${status.ssid ? `<p><strong>SSID:</strong> ${status.ssid}</p>` : ''}
-                    ${status.ip ? `<p><strong>IP:</strong> ${status.ip}</p>` : ''}
-                    ${status.signal ? `<p><strong>Señal:</strong> ${status.signal}%</p>` : ''}
+        if (status.connected) {
+            container.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="font-size: 3rem;">📶</div>
+                    <div>
+                        <h3 style="color: #00ff88;">✓ Conectado</h3>
+                        ${status.ssid ? `<p><strong>SSID:</strong> ${status.ssid}</p>` : ''}
+                        ${status.ip ? `<p><strong>IP:</strong> ${status.ip}</p>` : ''}
+                        ${status.signal ? `<p><strong>Señal:</strong> ${status.signal}%</p>` : ''}
+                    </div>
                 </div>
-            </div>
-        `;
-    } else {
-        container.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <div style="font-size: 3rem;">📡</div>
-                <div>
-                    <h3 style="color: #ff6b6b;">✗ No conectado</h3>
-                    <p style="color: #888;">Escanea redes WiFi disponibles</p>
+            `;
+        } else {
+            container.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="font-size: 3rem;">📡</div>
+                    <div>
+                        <h3 style="color: #ff6b6b;">✗ No conectado</h3>
+                        <p style="color: #888;">Escanea redes WiFi disponibles</p>
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
+        }
+    } catch (error) {
+        console.error('Error cargando estado de red:', error);
+        document.getElementById('networkStatus').innerHTML =
+            '<p style="color: #ff6b6b;">❌ Error cargando estado de red: ' + error.message + '</p>';
     }
 }
 
@@ -511,6 +530,75 @@ async function connectWiFi(e) {
     }
 }
 
+// =================== DESCARGA MÚLTIPLE ===================
+let multiDownloadMode = false;
+
+function toggleMultiDownloadMode() {
+    multiDownloadMode = document.getElementById('multiDownloadMode').checked;
+    document.getElementById('multiDownloadList').style.display = multiDownloadMode ? 'block' : 'none';
+
+    if (multiDownloadMode) {
+        loadMultiDownloadList();
+    }
+}
+
+async function loadMultiDownloadList() {
+    const data = await apiGet('/api/models/llm');
+    const installed = new Set(data.installed);
+    const container = document.getElementById('multiDownloadCheckboxes');
+
+    container.innerHTML = data.available
+        .filter(m => !installed.has(m.name))
+        .map(model => `
+            <label style="display: block; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <input type="checkbox" class="model-checkbox" value="${model.name}" onchange="updateSelectedCount()">
+                ${model.name}${model.recommended ? ' ⭐' : ''} - ${model.description} (${formatSize(model.size_mb)})
+            </label>
+        `).join('');
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.model-checkbox:checked').length;
+    document.getElementById('selectedCount').textContent = count;
+}
+
+async function downloadMultipleModels() {
+    const checkboxes = document.querySelectorAll('.model-checkbox:checked');
+    const models = Array.from(checkboxes).map(cb => cb.value);
+
+    if (models.length === 0) {
+        alert('Selecciona al menos un modelo');
+        return;
+    }
+
+    if (!confirm(`¿Descargar ${models.length} modelos?`)) return;
+
+    // Descargar uno por uno
+    for (const modelName of models) {
+        await apiPost('/api/models/download', { model: modelName });
+
+        // Esperar a que termine la descarga actual
+        await new Promise(resolve => {
+            const check = setInterval(async () => {
+                const status = await apiGet('/api/models/download/status');
+                if (status.error) {
+                    alert('Error descargando ' + modelName + ': ' + status.error);
+                    clearInterval(check);
+                    resolve();
+                } else if (!status.downloading && status.progress >= 100) {
+                    clearInterval(check);
+                    resolve();
+                }
+            }, 500);
+        });
+    }
+
+    alert('Descargas completadas');
+    loadModels();
+    document.getElementById('multiDownloadMode').checked = false;
+    toggleMultiDownloadMode();
+}
+
 // Utilidades
 function formatSize(mb) {
     if (mb >= 1024) {
@@ -519,7 +607,21 @@ function formatSize(mb) {
     return mb + ' MB';
 }
 
-// Cargar modelos al iniciar
-loadModels();
+// Cargar modelos al iniciar (esperando a que el DOM esté listo)
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM cargado, inicializando...');
+    loadModels().catch(err => {
+        console.error('Error inicial loadModels:', err);
+    });
+});
+
+// Fallback: también intentar cargar directamente por si acaso
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => loadModels());
+} else {
+    loadModels().catch(err => {
+        console.error('Error fallback loadModels:', err);
+    });
+}
 </script>
 {% endblock %}

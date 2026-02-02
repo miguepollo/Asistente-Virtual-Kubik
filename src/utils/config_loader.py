@@ -12,22 +12,35 @@ import base64
 
 logger = logging.getLogger(__name__)
 
+# Import paths configuration
+try:
+    from utils.paths import CONFIG_DIR
+except ImportError:
+    # Fallback for when paths module is not available
+    CONFIG_DIR = Path("/home/orangepi/asistente2/config")
+
 
 class Config:
     """Gestiona la configuración del asistente."""
 
     def __init__(
         self,
-        config_path: str = "/home/orangepi/asistente2/config/config.json",
-        api_keys_path: str = "/home/orangepi/asistente2/config/api_keys.json",
+        config_path: str = None,
+        api_keys_path: str = None,
         encryption_key: Optional[bytes] = None
     ):
         """
         Args:
-            config_path: Ruta al archivo de configuración principal
-            api_keys_path: Ruta al archivo de API keys
+            config_path: Ruta al archivo de configuración principal (default: CONFIG_DIR/config.json)
+            api_keys_path: Ruta al archivo de API keys (default: CONFIG_DIR/api_keys.json)
             encryption_key: Clave para encriptar/desencriptar (None=sin encriptación)
         """
+        # Use CONFIG_DIR from paths module if paths not specified
+        if config_path is None:
+            config_path = CONFIG_DIR / "config.json"
+        if api_keys_path is None:
+            api_keys_path = CONFIG_DIR / "api_keys.json"
+
         self.config_path = Path(config_path)
         self.api_keys_path = Path(api_keys_path)
 
